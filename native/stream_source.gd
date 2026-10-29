@@ -44,6 +44,7 @@ var _ping_ms: int = -1
 var _ping_sent: float = -1.0
 var _next_ping: float = 0.0
 const PING_EVERY := 3.0
+const ACK := "{\"type\":\"ack\"}"
 
 
 func setup(api_node: Node, id: String, start_fps: int) -> void:
@@ -76,7 +77,7 @@ static func _now() -> float:
 func _url() -> String:
 	var base: String = api.endpoint
 	base = base.replace("https://", "wss://").replace("http://", "ws://")
-	return "%s/api/tabs/%s/stream?fps=%d" % [base, tab_id, fps]
+	return "%s/api/tabs/%s/stream?fps=%d&ack=1" % [base, tab_id, fps]
 
 
 func _connect_ws() -> void:
@@ -157,6 +158,9 @@ func _drain() -> void:
 		else:
 			newest = pkt
 			_frames += 1
+			# Acknowledge each frame: the server keeps only a few in flight, so a slow link never
+			# builds up seconds of delay (inputs and FPS changes would queue behind them).
+			_ws.send_text(ACK)
 	if newest.is_empty():
 		return
 	if _img.load_jpg_from_buffer(newest) == OK:

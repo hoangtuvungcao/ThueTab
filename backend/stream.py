@@ -25,13 +25,27 @@ def is_keyframe(au):
 
 
 class Viewer:
-    def __init__(self, ws, fps, codec='mjpeg'):
+    def __init__(self, ws, fps, codec='mjpeg', ack=False):
         self.ws = ws
         self.fps = fps
         self.codec = codec  # 'h264' if the client decodes video (WebCodecs), else 'mjpeg'
         self.queue = asyncio.Queue()
         self.last_sent = 0.0
         self.need_key = True
+        # Flow control: clients that acknowledge each frame ({"type":"ack"}) never have more than a few frames
+        # in flight. Without it a slow uplink fills the proxy/tunnel buffers with seconds of frames, and inputs,
+        # fps changes and pongs queue behind them.
+        self.ack = ack
+        self.inflight = 0
+        self.room = asyncio.Event()
+        self.room.set()
+
+    def window(self):
+        return 2 if self.codec != 'h264' else max(4, self.fps // 4)
+
+    def acked(self):
+        self.inflight = max(0, self.inflight - 1)
+        if self.inflight < self.window(): self.room.set()
 
     def offer(self, frame):
         if is_jpeg(frame):
@@ -55,8 +69,13 @@ class Viewer:
 
     async def pump(self):
         while True:
+            if self.ack:
+                await self.room.wait()
             frame = await self.queue.get()
             self.last_sent = time.monotonic()
+            if self.ack:
+                self.inflight += 1
+                if self.inflight >= self.window(): self.room.clear()
             await self.ws.send_bytes(frame)
 
 

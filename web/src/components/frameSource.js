@@ -18,6 +18,7 @@ const FATAL = new Set([4401, 4403, 4404]); // retrying cannot help
 
 // Live view as H.264 video (only changes between frames travel: ~10x lighter than JPEG, so 30/60 fps fits a slow
 // server uplink). Needs WebCodecs; otherwise the server sends JPEG frames.
+const ACK = '{"type":"ack"}';
 const AVC = 'avc1.42E01F'; // constrained baseline, what the worker encodes
 const videoSupport = typeof VideoDecoder === 'undefined' ? Promise.resolve(false)
   : VideoDecoder.isConfigSupported({ codec: AVC, optimizeForLatency: true }).then(r => !!r.supported, () => false);
@@ -104,7 +105,7 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       closeDecoder();
       patch({ phase: hasFrame ? 'reconnecting' : 'connecting' });
       // Share links authenticate with ?share=; signed-in viewers in token mode send ['bearer', token] as subprotocols.
-      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}${h264 ? '&codec=h264' : ''}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
+      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}&ack=1${h264 ? '&codec=h264' : ''}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
       ws.onmessage = e => {
@@ -115,6 +116,8 @@ export function useTabStream(tabId, { fps, enabled, share }) {
           else if (m.type === 'error') patch({ error: { detail: m.detail || 'Thao tác không hợp lệ.', at: Date.now() } });
           return;
         }
+        // Acknowledge each frame: the server keeps only a few in flight, so a slow link never builds up delay.
+        if (ws.readyState === WebSocket.OPEN) ws.send(ACK);
         stamps.push(performance.now());
         if (pingStart.current) { lastPing = Math.round(performance.now() - pingStart.current); pingStart.current = 0; }
         const bytes = new Uint8Array(e.data);

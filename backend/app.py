@@ -729,7 +729,7 @@ async def stream_view(ws:WebSocket,id:str):
     if err: await ws.close(code=err); return
     try: fps=int(ws.query_params.get('fps','30'))
     except ValueError: fps=30
-    viewer=Viewer(ws,fps if fps in FPS_CHOICES else 30,'h264' if ws.query_params.get('codec')=='h264' else 'mjpeg')
+    viewer=Viewer(ws,fps if fps in FPS_CHOICES else 30,'h264' if ws.query_params.get('codec')=='h264' else 'mjpeg',ws.query_params.get('ack')=='1')
     if not hub.add_viewer(id,viewer): await ws.close(code=4429); return
     kind,screen=info[0],info[1]
     w,h=map(int,screen.split('x'))
@@ -745,6 +745,8 @@ async def stream_view(ws:WebSocket,id:str):
                 checked=t
                 if (await run_in_threadpool(check))[1]: await ws.close(code=4409); break
             if raw is None: continue
+            # Frame acknowledgements arrive once per frame (up to 60/s): handled before the input rate limit.
+            if raw=='{"type":"ack"}': viewer.acked();continue
             bucket=min(40.0,bucket+(t-refill)*30);refill=t
             if bucket<1: continue
             bucket-=1

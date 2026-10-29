@@ -51,3 +51,28 @@ def test_jpeg_viewer_never_gets_video_frames():
     hub.publish('t', DELTA)
     hub.publish('t', JPEG)
     assert frames(v) == [JPEG]
+
+
+def test_ack_window_limits_frames_in_flight():
+    import asyncio
+
+    class WS:
+        def __init__(self): self.sent = []
+        async def send_bytes(self, b): self.sent.append(b)
+
+    async def run():
+        ws = WS()
+        v = Viewer(ws, 30, 'mjpeg', ack=True)
+        pump = asyncio.create_task(v.pump())
+        for i in range(5):
+            v.last_sent = 0
+            v.offer(JPEG + bytes([i]))
+            await asyncio.sleep(0)
+        await asyncio.sleep(0.01)
+        assert len(ws.sent) == 2          # window of 2 unacknowledged JPEG frames
+        v.acked(); v.acked()
+        await asyncio.sleep(0.01)
+        assert len(ws.sent) == 3 and ws.sent[-1].endswith(bytes([4]))  # then only the newest frame
+        pump.cancel()
+
+    asyncio.run(run())

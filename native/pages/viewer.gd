@@ -35,7 +35,6 @@ var _pad_top: HBoxContainer
 var _numpad: GridContainer
 var _pad_main: VBoxContainer
 var _mode: String = ""  # "pad" | "side" | "stack"
-var _low_fps_since: float = -1.0  # identical frames are dropped server-side: a low rate means a still screen
 var _prev_low_processor: bool = false
 var _numpad_box: GridContainer  # portrait number pad (collapsible behind "123" on short screens)
 var _numpad_forced: bool = false  # user opened it with "123"
@@ -53,6 +52,31 @@ func _side_by_side() -> bool:
 ## Phone landscape: full-window game with gamepad-style controls overlaid on the sides.
 func _gamepad() -> bool:
 	return app.compact and app.size.x > app.size.y
+
+
+## Touch mode: virtual keys hidden, the player taps/swipes the game itself (like a phone game).
+func _pad_off() -> bool:
+	return bool(app.pref("pad_off", false))
+
+
+## Stretch the game over the whole available area (aspect ratio not kept).
+func _stretch() -> bool:
+	return bool(app.pref("stretch", false))
+
+
+func _toggle_pad() -> void:
+	app.set_pref("pad_off", not _pad_off())
+	_layout_body()
+	_render_head()
+	_fit_screen.call_deferred()
+
+
+func _toggle_stretch() -> void:
+	app.set_pref("stretch", not _stretch())
+	if is_instance_valid(_texture):
+		_texture.stretch_mode = TextureRect.STRETCH_SCALE if _stretch() else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_render_head()
+	_fit_screen.call_deferred()
 
 
 func _layout_mode() -> String:
@@ -134,6 +158,8 @@ func _exit_tree() -> void:
 	OS.low_processor_usage_mode = _prev_low_processor
 	if OS.has_feature("mobile"):
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR)
+		if get_window().mode == Window.MODE_FULLSCREEN:
+			get_window().mode = Window.MODE_WINDOWED
 	if is_instance_valid(_pad_root):
 		_pad_root.queue_free()
 		_pad_root = null
@@ -220,14 +246,17 @@ func _render_head() -> void:
 				items.append(["%d FPS" % v, [func() -> void:
 					app.set_user_pref("default_fps", v)
 					source.set_fps(v), v == _fps_pref()]])
+		items.append(["Hiện phím ảo", [_toggle_pad, not _pad_off()]])
+		items.append(["Lấp đầy màn hình", [_toggle_stretch, _stretch()]])
 		if UI.display_state(t) != "idle":
 			items.append(["Khởi động lại game", func() -> void: Actions.restart(app, tab())])
 		items.append(["Chia sẻ…", func() -> void: Actions.share_dialog(app, tab())])
 		items.append(["Toàn màn hình", _toggle_fullscreen])
 		items.append(["Nhật ký", func() -> void: Actions.logs(app, t)])
 		items.append(["Gia hạn…", func() -> void: Actions.renew(app, t, false)])
-		if _rotatable(t) and _tab_landscape(t):
-			UI.button(_head, "Quay về màn dọc", _to_portrait, "")
+		if not app.compact:
+			UI.button(_head, "Hiện phím" if _pad_off() else "Ẩn phím", _toggle_pad, "").tooltip_text = \
+				"Hiện bàn phím ảo" if _pad_off() else "Ẩn bàn phím ảo — chơi bằng chạm/chuột trên màn hình game"
 		var more := UI.menu_button(_head, "⋯", items, "")
 		more.custom_minimum_size = Vector2(UI.target_h(44), UI.target_h(38))
 	if _auto_timer:
@@ -334,12 +363,20 @@ func _layout_body() -> void:
 		_pad_root = null
 	_head.visible = _mode != "pad"
 	_warn.visible = _mode != "pad"
+	# Phones in landscape: hide the status/navigation bars so the game gets the whole screen.
+	if OS.has_feature("mobile"):
+		var win := get_window()
+		if _mode == "pad" and win.mode == Window.MODE_WINDOWED:
+			win.mode = Window.MODE_FULLSCREEN
+		elif _mode != "pad" and win.mode == Window.MODE_FULLSCREEN:
+			win.mode = Window.MODE_WINDOWED
 	if _mode == "pad":
 		_build_gamepad()
 		return
 
 	_screen_col = UI.vbox(_body, T.space("sm"))
 	_screen_col.size_flags_stretch_ratio = 1.6
+	_screen_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_screen_col.resized.connect(_fit_screen)
 	var console := PanelContainer.new()
 	console.theme_type_variation = "Console"
@@ -358,7 +395,7 @@ func _layout_body() -> void:
 	_texture = TextureRect.new()
 	_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_texture.stretch_mode = TextureRect.STRETCH_SCALE if _stretch() else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_texture.texture = prev_tex
 	_texture.mouse_filter = Control.MOUSE_FILTER_STOP
 	_texture.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -426,8 +463,14 @@ func _layout_body() -> void:
 		text_row.visible = false  # phone portrait: "Gõ chữ…" lives in the ⋯ menu to keep the keypad on screen
 		_text_in = null
 
+	_key_buttons = []
+	_keypad_card = null
 	if _mode == "stack":
-		_build_portrait_keys()
+		if not _pad_off():
+			_build_portrait_keys()
+		_fit_screen.call_deferred()
+		return
+	if _pad_off():
 		_fit_screen.call_deferred()
 		return
 	var keys := UI.card(_body, "Card", T.space("md"))
@@ -478,17 +521,9 @@ func _on_stats(fps_now: float, ping_ms: int, live: bool) -> void:
 		return
 	if live:
 		var parts := PackedStringArray(["● Trực tiếp"])
-		var now_s := Time.get_ticks_msec() / 1000.0
-		if fps_now < 3.0:
-			if _low_fps_since < 0.0:
-				_low_fps_since = now_s
-		else:
-			_low_fps_since = -1.0
 		if _last_frame_at == 0:
 			parts.append("đang chờ hình đầu tiên")
-		elif _low_fps_since >= 0.0 and now_s - _low_fps_since >= 2.0:
-			parts.append("Màn hình tĩnh")
-		elif fps_now >= 1.0:
+		else:
 			parts.append("%d fps" % roundi(fps_now))
 		if ping_ms >= 0:
 			parts.append("%d ms" % ping_ms)
@@ -520,10 +555,16 @@ func _fit_screen() -> void:
 		var avail := _available_height()
 		_fit_keys(avail)
 		max_h = maxf(avail - (_screen_col.get_combined_minimum_size().y - _stack.custom_minimum_size.y) - 2.0, 160.0)
-	# Fit inside the column/window keeping aspect; snap to an integer scale for pixel-art frames.
+	if _stretch():
+		var full := Vector2(avail_w, max_h).floor()
+		if _stack.custom_minimum_size != full:
+			_stack.custom_minimum_size = full
+		return
+	# Fit inside the column/window keeping aspect; snap to an integer scale for pixel-art frames
+	# only when that wastes little room (dense phone screens gain nothing from a smaller integer scale).
 	var s := minf(avail_w / fsz.x, max_h / fsz.y)
 	var pixel := is_midp() or fsz.y > fsz.x or fsz.x <= 400.0
-	if pixel and s >= 1.0 and floorf(s) / s >= 0.8:
+	if pixel and s >= 1.0 and floorf(s) / s >= 0.95:
 		s = floorf(s)
 	var want := (fsz * s).floor()
 	if _stack.custom_minimum_size != want:
@@ -585,10 +626,12 @@ func _to_frame(local: Vector2) -> Variant:
 		return null
 	var ts := tex.get_size()
 	var rs := _texture.size
-	var scale_f := minf(rs.x / ts.x, rs.y / ts.y)
-	var drawn := ts * scale_f
-	var offset := (rs - drawn) / 2.0
-	var p := (local - offset) / scale_f
+	# Stretched: each axis has its own scale; otherwise uniform scale, centred.
+	var sc := rs / ts
+	if _texture.stretch_mode != TextureRect.STRETCH_SCALE:
+		sc = Vector2.ONE * minf(sc.x, sc.y)
+	var offset := (rs - ts * sc) / 2.0
+	var p := (local - offset) / sc
 	if p.x < 0 or p.y < 0 or p.x >= ts.x or p.y >= ts.y:
 		return null
 	return Vector2i(clampi(int(p.x), 0, int(ts.x) - 1), clampi(int(p.y), 0, int(ts.y) - 1))
@@ -715,7 +758,7 @@ func _build_gamepad() -> void:
 	_texture = TextureRect.new()
 	_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_texture.stretch_mode = TextureRect.STRETCH_SCALE if _stretch() else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_texture.texture = prev_tex
 	_texture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST if is_midp() else CanvasItem.TEXTURE_FILTER_LINEAR
 	_texture.gui_input.connect(_on_screen_input)
@@ -791,6 +834,9 @@ func _build_gamepad() -> void:
 		_numpad.visible = not _numpad.visible
 		_pad_main.visible = not _numpad.visible
 		_place_pad())
+	if _pad_off():
+		left.visible = false
+		_pad_main.visible = false
 	# Top bar: back, title/readout, actions
 	_pad_top = HBoxContainer.new()
 	_pad_top.add_theme_constant_override("separation", 8)
@@ -866,8 +912,21 @@ func _render_pad_top() -> void:
 			if r.ok:
 				_begin_rotation(target))
 		_pad_top.add_child(rot)
+	var keys_btn := Button.new()
+	keys_btn.text = "Hiện phím" if _pad_off() else "Ẩn phím"
+	keys_btn.tooltip_text = "Hiện phím ảo" if _pad_off() else "Ẩn phím ảo — chơi bằng chạm trên màn hình"
+	keys_btn.focus_mode = Control.FOCUS_NONE
+	keys_btn.custom_minimum_size.y = 48
+	keys_btn.add_theme_stylebox_override("normal", _pad_style(0.14))
+	keys_btn.add_theme_stylebox_override("hover", _pad_style(0.2))
+	keys_btn.add_theme_stylebox_override("pressed", _pad_style(0.28))
+	keys_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	keys_btn.pressed.connect(_toggle_pad)
+	_pad_top.add_child(keys_btn)
 	var items: Array = []
 	items.append(["Đổi game", func() -> void: Actions.change_game(app, tab())])
+	items.append(["Hiện phím ảo", [_toggle_pad, not _pad_off()]])
+	items.append(["Lấp đầy màn hình", [_toggle_stretch, _stretch()]])
 	if _rotatable(t):
 		items.append(["Màn hình…", func() -> void: Actions.pick_screen(app, tab(), _begin_rotation)])
 		items.append(["Tự xoay theo thiết bị", [func() -> void:
@@ -921,9 +980,9 @@ func _fit_pad() -> void:
 	var area := Rect2(ins.position, _pad_root.size - ins.position - ins.size)
 	var fsz := _frame_size()
 	var s := minf(area.size.x / fsz.x, area.size.y / fsz.y)
-	if (is_midp() or fsz.x <= 400.0) and s >= 1.0 and floorf(s) / s >= 0.85:
+	if (is_midp() or fsz.x <= 400.0) and s >= 1.0 and floorf(s) / s >= 0.95:
 		s = floorf(s)
-	var want := (fsz * s).floor()
+	var want := area.size.floor() if _stretch() else (fsz * s).floor()
 	_stack.size = want
 	_stack.position = (area.position + (area.size - want) / 2.0).floor()
 	_place_pad()
