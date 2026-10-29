@@ -35,6 +35,8 @@ echo "==> Cài gói hệ thống"
 if ! ip -6 route show default 2>/dev/null | grep -q .; then
   echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
 fi
+# Flaky NAT/ISP links break pipelined HTTP downloads ("Tried to start delayed item ... but failed").
+printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::Retries "5";\n' > /etc/apt/apt.conf.d/99thuetab-net
 apt-get update -qq
 apt-get install -y -qq python3-venv python3-pip rsync zram-tools curl ca-certificates >/dev/null
 if ! command -v docker >/dev/null; then
