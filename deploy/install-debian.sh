@@ -37,6 +37,11 @@ if ! ip -6 route show default 2>/dev/null | grep -q .; then
 fi
 # Flaky NAT/ISP links break pipelined HTTP downloads ("Tried to start delayed item ... but failed").
 printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::Retries "5";\n' > /etc/apt/apt.conf.d/99thuetab-net
+# Some ISPs/proxies mangle plain-HTTP mirror traffic; Debian mirrors also serve HTTPS, which passes untouched.
+if curl -4 -fsI --max-time 10 https://deb.debian.org/debian/ >/dev/null 2>&1; then
+  sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://security.debian.org|g' \
+    /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
+fi
 apt-get update -qq
 apt-get install -y -qq python3-venv python3-pip rsync zram-tools curl ca-certificates >/dev/null
 if ! command -v docker >/dev/null; then
