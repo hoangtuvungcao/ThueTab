@@ -229,9 +229,11 @@ export function toFramePoint(el, clientX, clientY) {
   const r = el.getBoundingClientRect();
   const nw = el.naturalWidth || el.width, nh = el.naturalHeight || el.height; // <img> or <canvas>
   if (!nw || !nh) return null;
-  const scale = Math.min(r.width / nw, r.height / nh);
-  const ox = (r.width - nw * scale) / 2, oy = (r.height - nh * scale) / 2;
-  const x = (clientX - r.left - ox) / scale, y = (clientY - r.top - oy) / scale;
+  // object-fit: contain (centred, uniform scale) or fill ("Lấp đầy màn hình": each axis scaled on its own).
+  const fill = getComputedStyle(el).objectFit === 'fill';
+  const sx = fill ? r.width / nw : Math.min(r.width / nw, r.height / nh), sy = fill ? r.height / nh : sx;
+  const ox = (r.width - nw * sx) / 2, oy = (r.height - nh * sy) / 2;
+  const x = (clientX - r.left - ox) / sx, y = (clientY - r.top - oy) / sy;
   if (x < 0 || y < 0 || x >= nw || y >= nh) return null;
   return { x: Math.min(nw - 1, Math.round(x)), y: Math.min(nh - 1, Math.round(y)) };
 }

@@ -408,6 +408,7 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
 .screen { position: relative; width: 100%; background: #000; border-radius: var(--r-sm); overflow: hidden; }
 .screen .screen-media { display: block; width: 100%; height: 100%; object-fit: contain; }
 .screen .screen-media[hidden] { display: none; }
+.screen.stretch .screen-media { object-fit: fill; image-rendering: pixelated; }
 .screen.portrait .screen-media { image-rendering: pixelated; }
 .screen .stale { opacity: 0.65; }
 .screen.touch { cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
@@ -749,6 +750,8 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
   .v-overlay.top-left .btn { background: rgb(0 0 0 / 0.45); color: #fff; }
   .v-overlay.top-left .menu-list { left: 0; right: auto; }
   .v-chips { bottom: calc(env(safe-area-inset-bottom) + 8px); }
+  /* the toolbar owns the top-left corner */
+  .v-stage .live-tag { left: auto; right: 8px; }
   .v-panel { align-items: center; }
   .toasts { left: calc(env(safe-area-inset-left) + 12px); right: auto; top: 8px; width: min(320px, 38vw); }
 }

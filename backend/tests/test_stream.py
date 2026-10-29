@@ -41,3 +41,13 @@ def test_jpeg_still_reaches_thumbnails():
     hub = Hub()
     hub.publish('t', JPEG)
     assert hub.recent('t') == JPEG
+
+
+def test_jpeg_viewer_never_gets_video_frames():
+    hub = Hub()
+    hub.publish('t', KEY)
+    v = Viewer(None, 30)
+    hub.add_viewer('t', v)
+    hub.publish('t', DELTA)
+    hub.publish('t', JPEG)
+    assert frames(v) == [JPEG]

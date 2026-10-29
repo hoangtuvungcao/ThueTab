@@ -40,6 +40,9 @@ class Viewer:
             while not self.queue.empty(): self.queue.get_nowait()
             self.queue.put_nowait(frame)
             return
+        # JPEG-only clients (native app, old browsers) can't decode video: while the tab switches codec they
+        # wait for the first JPEG instead of getting undecodable frames.
+        if self.codec != 'h264': return
         # Video frames depend on the previous ones, so they can't be skipped one by one: when the link falls more
         # than ~0.5 s behind, drop the backlog and resume at the next keyframe (one per second).
         key = is_keyframe(frame)

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Camera, Play, Terminal, MonitorOff, Send, Repeat, RotateCw, RotateCcw, Share2, X, HelpCircle, Maximize2, Minimize2, MoreHorizontal, Keyboard, RectangleVertical, Gamepad2, Hand } from 'lucide-react';
+import { Camera, Play, Terminal, MonitorOff, Send, Repeat, RotateCw, RotateCcw, Share2, X, HelpCircle, Maximize2, Minimize2, MoreHorizontal, Keyboard, Gamepad2, Hand } from 'lucide-react';
 import { api, serverNow } from '../api.js';
 import { POLL, STREAM, tabState, tabKind } from '../tokens.js';
 import { useApp } from '../store.js';
@@ -15,12 +15,13 @@ const TAP_SLOP = 8; // px of pointer travel below which a gesture is a tap, abov
 // Frame box sized to the game's real orientation (J2ME 240×320 portrait, Java PC 640×480 landscape).
 // `media` is the visible <img>/<canvas> (class "screen-media"); with `onTouch`, pointer gestures on it are
 // mapped to frame pixels and reported as a tap or a swipe. Feedback (ripple) is local and immediate.
-export function Screen({ w, h, kind, media, fresh, onTouch, children, className = '', fit }) {
+export function Screen({ w, h, kind, media, fresh, onTouch, children, className = '', fit, stretch }) {
   const portrait = w ? h > w : kind === 'midp';
   const start = useRef(null);
   const box = useRef(null);
-  // With `fit`, the screen takes the largest size that fits its parent (any aspect ratio, centred),
-  // using an integer scale when that wastes <15% of the space so pixel art stays crisp.
+  // With `fit`, the screen takes the largest size that fits its parent (any aspect ratio, centred), snapping to an
+  // integer scale only when that wastes <5% (phones have dense pixels: a smaller integer scale just wastes screen).
+  // With `stretch`, it fills the parent completely (aspect ratio not kept).
   const [size, setSize] = useState(null);
   useLayoutEffect(() => {
     const el = fit ? box.current?.parentElement : null;
@@ -32,16 +33,17 @@ export function Screen({ w, h, kind, media, fresh, onTouch, children, className 
       const aw = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       const ah = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
       if (aw <= 0 || ah <= 0) return;
+      if (stretch) return setSize({ w: Math.floor(aw), h: Math.floor(ah) });
       const f = Math.min(aw / fw, ah / fh);
       const k = Math.floor(f);
-      const sc = k >= 1 && k / f >= 0.85 ? k : f;
+      const sc = k >= 1 && k / f >= 0.95 ? k : f;
       setSize({ w: Math.floor(fw * sc), h: Math.floor(fh * sc) });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [fit, w, h, portrait]);
+  }, [fit, w, h, portrait, stretch]);
   const [ripples, setRipples] = useState([]);
   const target = el => el.querySelector('.screen-media:not([hidden])');
   const ripple = (e, swipe) => {
@@ -78,7 +80,7 @@ export function Screen({ w, h, kind, media, fresh, onTouch, children, className 
     ? (size ? { width: size.w, height: size.h } : { visibility: 'hidden' })
     : { aspectRatio: w ? `${w} / ${h}` : portrait ? '3 / 4' : '4 / 3' };
   return (
-    <div ref={box} className={`screen ${portrait ? 'portrait' : 'landscape'}${fit ? ' fit' : ''}${onTouch ? ' touch' : ''} ${className}`} style={style} {...handlers}>
+    <div ref={box} className={`screen ${portrait ? 'portrait' : 'landscape'}${fit ? ' fit' : ''}${stretch ? ' stretch' : ''}${onTouch ? ' touch' : ''} ${className}`} style={style} {...handlers}>
       {media}
       {fresh && <span className="live-tag" aria-label="Đang phát trực tiếp">LIVE</span>}
       {ripples.map(r => <span key={r.id} className={'ripple' + (r.swipe ? ' swipe' : '')} style={{ left: r.x, top: r.y }} aria-hidden />)}
@@ -102,6 +104,7 @@ function click() {
 }
 const loadAuto = () => { try { return localStorage.getItem('tt-autorotate') === '1'; } catch { return false; } };
 
+const loadStretch = () => { try { return localStorage.getItem('tt-stretch') === '1'; } catch { return false; } };
 const loadPadOff = () => { try { return localStorage.getItem('tt-pad-off') === '1'; } catch { return false; } };
 const loadOpacity = () => { try { return Number(localStorage.getItem('tt-pad-opacity')) || 0.55; } catch { return 0.55; } };
 
@@ -124,6 +127,8 @@ export default function Viewer({ tab }) {
   const [fs, setFs] = useState(false);
   // Touch mode: virtual keys hidden, the player taps/swipes the game itself like on an Android phone.
   const [padOff, setPadOff] = useState(loadPadOff);
+  const [stretch, setStretch] = useState(loadStretch);
+  const toggleStretch = v => { setStretch(v); try { localStorage.setItem('tt-stretch', v ? '1' : '0'); } catch {} };
   const fsDeclined = useRef(false); // the player left fullscreen on purpose: don't force it back
   const [hintOff, setHintOff] = useState(false); // dismissed rotate suggestion
   const deviceLandscape = useMedia('(orientation: landscape)');
@@ -206,7 +211,7 @@ export default function Viewer({ tab }) {
   }, [padMode, fs]);
   const togglePad = () => {
     const v = !padOff;
-    setPadOff(v); setNums(false); setPanel(null);
+    setPadOff(v); setNums(false);
     try { localStorage.setItem('tt-pad-off', v ? '1' : '0'); } catch {}
   };
   const padToggle = cls => (
@@ -241,13 +246,12 @@ export default function Viewer({ tab }) {
     {!info.hasFrame && still.src && <img src={still.src} onLoad={onStillLoad} alt={`Ảnh tĩnh của ${tab.name}`} className="screen-media stale" draggable={false} />}
   </>;
   const status = !live ? 'Không có tín hiệu' : pending ? 'Đang xoay màn hình…' : PHASE_TEXT[info.phase] || info.message;
-  const portraitBack = j2me && tabOrient === 'landscape' && !pending;
-  const backToPortrait = () => rotate(rotatedScreen(config.screens, screenId, 'portrait'));
 
   const screenPanel = (
     <div className="v-pop" role="dialog" aria-label="Màn hình">
       <ScreenPicker screens={config.screens} value={screenId} onChange={rotate} compact />
       <Switch label="Tự xoay theo thiết bị" desc="Đổi dọc/ngang khi bạn xoay điện thoại." checked={auto} onChange={toggleAuto} />
+      <Switch label="Lấp đầy màn hình" desc="Kéo giãn hình game phủ kín màn hình (không giữ tỷ lệ)." checked={stretch} onChange={toggleStretch} />
     </div>
   );
   const textPanel = (
@@ -293,7 +297,7 @@ export default function Viewer({ tab }) {
         </header>}
 
         <div className="v-stage">
-          <Screen fit w={fw || dw} h={fh || dh} kind={kind} media={media} fresh={streaming && !pending} onTouch={live && !pending ? touch : undefined}>
+          <Screen fit stretch={stretch} w={fw || dw} h={fh || dh} kind={kind} media={media} fresh={streaming && !pending} onTouch={live && !pending ? touch : undefined}>
             {(!live || (!info.hasFrame && !still.src) || info.phase === 'closed') && (
               <div className="screen-msg">
                 <MonitorOff size={28} aria-hidden />
@@ -305,7 +309,7 @@ export default function Viewer({ tab }) {
             {live && pending && <div className="screen-msg"><RotateCw size={28} className="spin" aria-hidden /><p>Đang xoay màn hình sang {pending.replace('x', '×')}…</p></div>}
             {live && !pending && info.hasFrame && info.phase === 'reconnecting' && <span className="screen-banner">{info.message}</span>}
           </Screen>
-          {(mismatch && !auto && !pending && !hintOff) || portraitBack ? (
+          {mismatch && !auto && !pending && !hintOff ? (
             <div className="v-chips">
               {mismatch && !auto && !pending && !hintOff && (
                 <span className="v-chip">
@@ -313,9 +317,6 @@ export default function Viewer({ tab }) {
                     <RotateCw size={14} aria-hidden /> Chuyển sang màn {deviceLandscape ? 'ngang' : 'dọc'}</button>
                   <button type="button" className="v-chip-x" aria-label="Ẩn gợi ý" onClick={() => setHintOff(true)}><X size={14} /></button>
                 </span>
-              )}
-              {portraitBack && !(mismatch && deviceOrient === 'portrait' && !hintOff) && (
-                <span className="v-chip"><button type="button" className="v-chip-main" onClick={backToPortrait}><RectangleVertical size={14} aria-hidden /> Quay về màn dọc</button></span>
               )}
             </div>
           ) : null}
@@ -380,9 +381,10 @@ export default function Viewer({ tab }) {
               {panel === 'more' && (
                 <div className="v-pop">
                   <Segmented label="Tốc độ khung hình" value={fps} onChange={chooseFps} options={STREAM.fps_choices.map(f => [f, `${f} FPS`])} />
-                  {j2me && screenPanel}
-                  <label className="field"><span className="label">Độ trong của phím ảo</span>
-                    <input type="range" min="0.25" max="1" step="0.05" value={opacity} onChange={e => setOp(Number(e.target.value))} /></label>
+                  {j2me ? screenPanel : <Switch label="Lấp đầy màn hình" desc="Kéo giãn hình game phủ kín màn hình (không giữ tỷ lệ)." checked={stretch} onChange={toggleStretch} />}
+                  <Switch label="Hiện phím ảo" desc="Tắt để chơi bằng cách chạm và vuốt trực tiếp trên màn hình game." checked={!padOff} onChange={togglePad} />
+                  {!padOff && <label className="field"><span className="label">Độ trong của phím ảo</span>
+                    <input type="range" min="0.25" max="1" step="0.05" value={opacity} onChange={e => setOp(Number(e.target.value))} /></label>}
                   <div className="row gap-sm wrap">
                     <Button icon={Keyboard} onClick={() => setPanel('text')}>Gõ chữ</Button>
                     {moreItems.map(m => <Button key={m.label} icon={m.icon} onClick={() => { setPanel(null); m.onClick(); }} disabled={m.disabled}>{m.label}</Button>)}
