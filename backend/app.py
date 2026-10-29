@@ -120,7 +120,33 @@ def downloads():
     for pid,label,exts in DOWNLOAD_PLATFORMS:
         files=sorted((f for f in folder.glob('*') if f.is_file() and f.name.endswith(exts)),key=lambda f:f.stat().st_mtime,reverse=True) if folder.is_dir() else []
         if files: out.append({'platform':pid,'label':label,'file':files[0].name,'size':files[0].stat().st_size,'updated':int(files[0].stat().st_mtime),'url':'/api/downloads/'+files[0].name})
+    # Platforms without a local build link to the latest GitHub release (served by GitHub's CDN, no server bandwidth).
+    have={d['platform'] for d in out}
+    for asset in release_assets():
+        pid=next((pid for pid,_,exts in DOWNLOAD_PLATFORMS if asset['name'].endswith(exts)),None)
+        if pid and pid not in have:
+            have.add(pid)
+            out.append({'platform':pid,'label':dict((x[0],x[1]) for x in DOWNLOAD_PLATFORMS)[pid],'file':asset['name'],
+                        'size':asset['size'],'updated':asset['updated'],'url':asset['url']})
     return out
+
+APP_RELEASE_REPO=os.getenv('APP_RELEASE_REPO','')
+_release_cache={'at':0,'assets':[]}
+def release_assets():
+    """Assets of the latest GitHub release of APP_RELEASE_REPO, cached for an hour (empty if unset/unreachable)."""
+    if not APP_RELEASE_REPO: return []
+    if time.time()-_release_cache['at']<3600: return _release_cache['assets']
+    _release_cache['at']=time.time()
+    try:
+        import httpx, datetime
+        r=httpx.get(f'https://api.github.com/repos/{APP_RELEASE_REPO}/releases/latest',timeout=4,headers={'Accept':'application/vnd.github+json'})
+        r.raise_for_status()
+        ts=lambda v: int(datetime.datetime.fromisoformat(v.replace('Z','+00:00')).timestamp()) if v else 0
+        _release_cache['assets']=[{'name':a['name'],'size':a['size'],'updated':ts(a.get('updated_at')),'url':a['browser_download_url']}
+                                  for a in r.json().get('assets',[])]
+    except Exception:
+        _release_cache['at']=time.time()-3300  # retry in ~5 minutes
+    return _release_cache['assets']
 def jar_dict(j): return {k:getattr(j,k) for k in ('id','filename','file_size','sha256','status','kind','midlet','screen','created')}
 
 def superclass(data):

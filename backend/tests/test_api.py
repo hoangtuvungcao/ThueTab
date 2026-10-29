@@ -588,3 +588,15 @@ def test_stream_bearer_subprotocol_cross_site():
     with pytest.raises(WebSocketDisconnect) as e:
         with c.websocket_connect('/api/tabs/'+tab['id']+'/stream',subprotocols=['bearer','wrong'],headers={'origin':'https://thuetab.pages.dev'}) as ws: ws.receive_text()
     assert e.value.code==4401
+
+def test_downloads_fall_back_to_github_release(monkeypatch):
+    import backend.app as m
+    monkeypatch.setattr(m,'release_assets',lambda: [
+        {'name':'ThueTab-Android.apk','size':5,'updated':1,'url':'https://github.com/x/y/releases/download/v1/ThueTab-Android.apk'},
+        {'name':'ThueTab-macOS.zip','size':6,'updated':1,'url':'https://github.com/x/y/releases/download/v1/ThueTab-macOS.zip'}])
+    d=m.DATA_DIR/'downloads';d.mkdir(exist_ok=True)
+    for f in d.iterdir(): f.unlink()
+    (d/'ThueTab-Android.apk').write_bytes(b'PK')
+    dl={x['platform']:x for x in TestClient(app).get('/api/config').json()['downloads']}
+    assert dl['android']['url']=='/api/downloads/ThueTab-Android.apk'      # local build wins
+    assert dl['macos']['url'].startswith('https://github.com/')              # missing locally -> release link

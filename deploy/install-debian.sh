@@ -11,11 +11,11 @@
 # --cf-token install cloudflared and run the tunnel created in the Cloudflare dashboard (Zero Trust → Tunnels).
 # --capacity override the automatic number of game tabs.
 # --with-web also build and serve the web front-end from this machine (not needed with Cloudflare Pages).
-# --no-apps  skip downloading the app builds from GitHub Releases.
+# --with-apps also store the app builds on this server (default: the download page links to GitHub Releases).
 # --mtu N    lower the network MTU (e.g. 1280) when large downloads get reset; kept across reboots.
 set -euo pipefail
 
-ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0; WITH_APPS=1; MTU=""
+ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0; WITH_APPS=0; MTU=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --origin) ORIGIN="$2"; shift 2 ;;
@@ -24,6 +24,7 @@ while [ $# -gt 0 ]; do
     --cf-token) CF_TOKEN="$2"; shift 2 ;;
     --with-web) WITH_WEB=1; shift ;;
     --no-apps) WITH_APPS=0; shift ;;
+    --with-apps) WITH_APPS=1; shift ;;
     --mtu) MTU="$2"; shift 2 ;;
     --capacity) CAPACITY="$2"; shift 2 ;;
     *) echo "Tham số không hợp lệ: $1" >&2; exit 1 ;;
@@ -134,6 +135,8 @@ COOKIE_SECURE=$SECURE
 API_PORT=$PORT
 TRUSTED_PROXIES=127.0.0.1/32,::1/128,172.16.0.0/12
 JAR_AUTO_APPROVE=true
+# Trang Tải ứng dụng dẫn tới bản cài trên GitHub Releases (không tốn băng thông máy chủ)
+APP_RELEASE_REPO=hoangtuvungcao/ThueTab
 ALLOW_FILTERED_EGRESS=true
 TRIAL_MINUTES=60
 # Điền để bật nạp tiền tự động:
@@ -176,9 +179,9 @@ WantedBy=multi-user.target
 EOF
 sed "s|API_URL=http://127.0.0.1:8000|API_URL=http://127.0.0.1:$PORT|" "$APP/deploy/thuetab-worker.service" > /etc/systemd/system/thuetab-worker.service
 systemctl daemon-reload
-systemctl enable --now thuetab-api >/dev/null
+systemctl enable thuetab-api >/dev/null 2>&1; systemctl restart thuetab-api
 for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null && break; sleep 1; done
-systemctl enable --now thuetab-worker >/dev/null
+systemctl enable thuetab-worker >/dev/null 2>&1; systemctl restart thuetab-worker
 
 if ! "$APP/.venv/bin/python" - <<EOF
 import sqlite3,sys
