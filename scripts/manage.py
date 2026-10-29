@@ -26,8 +26,13 @@ with tx() as s:
         u=s.scalar(select(User).where(User.email==email).with_for_update())
         if a.cmd=='create-admin':
             if u: raise SystemExit('Account exists. Refusing to overwrite.')
-            password=os.getenv('INITIAL_ADMIN_PASSWORD') or getpass.getpass('Admin password (10+ characters): ')
-            if len(password)<10: raise SystemExit('Password too short')
+            password=os.getenv('INITIAL_ADMIN_PASSWORD','')
+            if password and len(password)<10: raise SystemExit('Password too short')
+            # Interactive: ask again instead of aborting a half-finished install.
+            while len(password)<10:
+                password=getpass.getpass('Mật khẩu admin (ít nhất 10 ký tự): ')
+                if len(password)<10: print('Mật khẩu quá ngắn, nhập lại.'); continue
+                if getpass.getpass('Nhập lại mật khẩu: ')!=password: print('Hai lần nhập không khớp.'); password=''
             s.add(User(id=uid(),email=email,name=a.name,password=ph.hash(password),role='admin',trial_approved=1));print('Administrator created')
         elif not u: raise SystemExit('Account not found')
         elif a.cmd=='delete-user':
