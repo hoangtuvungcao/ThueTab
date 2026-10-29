@@ -108,6 +108,20 @@ async function openViewer(page, label) {
   log(`${label}: screen ${Math.round(sb.width)}×${Math.round(sb.height)} at ${Math.round(sb.x)},${Math.round(sb.y)}`);
 }
 
+// Touch mode: hide the virtual keys, the game screen must grow and every remaining control stay on screen.
+async function touchMode(page, label) {
+  const before = await page.locator('.viewer .screen.fit').boundingBox();
+  await page.getByRole('button', { name: 'Ẩn phím ảo (chơi bằng chạm)' }).first().click();
+  await page.waitForTimeout(400);
+  if (await page.locator('.viewer .v-pad, .viewer .v-overlay.left, .viewer .v-overlay.right').count()) problems.push(`[${label} touch] virtual keys still shown`);
+  await check(page, label + ' touch', '.viewer', true);
+  const after = await page.locator('.viewer .screen.fit').boundingBox();
+  if (after.width * after.height < before.width * before.height - 1) problems.push(`[${label} touch] screen shrank`);
+  log(`${label} touch: screen ${Math.round(after.width)}×${Math.round(after.height)}`);
+  await page.screenshot({ path: `${DOCS}/viewer-${label}-touch.png` });
+  await page.getByRole('button', { name: 'Hiện phím ảo' }).first().click();
+}
+
 // ---------- phones (touch) ----------
 for (const [w, h] of PHONES) {
   const label = `${w}x${h}`;
@@ -130,7 +144,9 @@ for (const [w, h] of PHONES) {
     await page.waitForTimeout(250);
     await check(page, label + '+123', '.viewer', true);
     await page.screenshot({ path: `${DOCS}/viewer-${label}-123.png` });
+    await t123.click();
   }
+  await touchMode(page, label);
   await ctx.close();
 }
 
@@ -169,6 +185,7 @@ for (const [w, h] of DESKTOPS) {
   await page.keyboard.press('Escape');
   await openViewer(page, label);
   await page.screenshot({ path: `${DOCS}/viewer-${label}.png` });
+  await touchMode(page, label);
   await page.locator('.v-head').getByRole('button', { name: 'Đóng', exact: true }).click();
   // JAR delete confirm
   await page.evaluate(() => { location.hash = '/jars'; });

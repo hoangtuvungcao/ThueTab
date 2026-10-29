@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Camera, Play, Terminal, MonitorOff, Send, Repeat, RotateCw, RotateCcw, Share2, X, HelpCircle, Maximize2, Minimize2, MoreHorizontal, Keyboard, RectangleVertical } from 'lucide-react';
+import { Camera, Play, Terminal, MonitorOff, Send, Repeat, RotateCw, RotateCcw, Share2, X, HelpCircle, Maximize2, Minimize2, MoreHorizontal, Keyboard, RectangleVertical, Gamepad2, Hand } from 'lucide-react';
 import { api, serverNow } from '../api.js';
 import { POLL, STREAM, tabState, tabKind } from '../tokens.js';
 import { useApp } from '../store.js';
@@ -102,6 +102,7 @@ function click() {
 }
 const loadAuto = () => { try { return localStorage.getItem('tt-autorotate') === '1'; } catch { return false; } };
 
+const loadPadOff = () => { try { return localStorage.getItem('tt-pad-off') === '1'; } catch { return false; } };
 const loadOpacity = () => { try { return Number(localStorage.getItem('tt-pad-opacity')) || 0.55; } catch { return 0.55; } };
 
 export default function Viewer({ tab }) {
@@ -121,6 +122,9 @@ export default function Viewer({ tab }) {
   const [auto, setAuto] = useState(loadAuto);
   const [opacity, setOpacity] = useState(loadOpacity);
   const [fs, setFs] = useState(false);
+  // Touch mode: virtual keys hidden, the player taps/swipes the game itself like on an Android phone.
+  const [padOff, setPadOff] = useState(loadPadOff);
+  const fsDeclined = useRef(false); // the player left fullscreen on purpose: don't force it back
   const [hintOff, setHintOff] = useState(false); // dismissed rotate suggestion
   const deviceLandscape = useMedia('(orientation: landscape)');
   // Layout modes: wide (side keypad), stacked (phone/tablet portrait), pad (landscape phone: gamepad overlay).
@@ -180,13 +184,35 @@ export default function Viewer({ tab }) {
   const setOp = v => { setOpacity(v); try { localStorage.setItem('tt-pad-opacity', String(v)); } catch {} };
 
   // Fullscreen + orientation lock (iOS has neither for elements: falls back to the CSS full-viewport layout).
-  const toggleFs = async () => {
+  const enterFs = async orient => {
     try {
-      if (document.fullscreenElement) { await document.exitFullscreen(); return; }
       await root.current.requestFullscreen?.({ navigationUI: 'hide' });
-      await screen.orientation?.lock?.(tabOrient === 'landscape' || !j2me ? 'landscape' : 'portrait');
+      await screen.orientation?.lock?.(orient);
     } catch {}
   };
+  const toggleFs = async () => {
+    if (document.fullscreenElement) { fsDeclined.current = true; try { await document.exitFullscreen(); } catch {} return; }
+    fsDeclined.current = false;
+    await enterFs(tabOrient === 'landscape' || !j2me ? 'landscape' : 'portrait');
+  };
+  // Landscape phone (Android): the first touch goes fullscreen, hiding the browser bars, so the game uses the whole
+  // screen. Browsers only allow it from a tap. iOS has no element fullscreen: the CSS layout already fills the view.
+  useEffect(() => {
+    if (!padMode || fs || fsDeclined.current || !root.current?.requestFullscreen) return;
+    const el = root.current;
+    const go = () => { if (!document.fullscreenElement && !fsDeclined.current) enterFs('landscape'); };
+    el.addEventListener('pointerdown', go, { once: true });
+    return () => el.removeEventListener('pointerdown', go);
+  }, [padMode, fs]);
+  const togglePad = () => {
+    const v = !padOff;
+    setPadOff(v); setNums(false); setPanel(null);
+    try { localStorage.setItem('tt-pad-off', v ? '1' : '0'); } catch {}
+  };
+  const padToggle = cls => (
+    <Button variant="ghost" className={cls} icon={padOff ? Gamepad2 : Hand} onClick={togglePad} aria-pressed={padOff}
+      aria-label={padOff ? 'Hiện phím ảo' : 'Ẩn phím ảo (chơi bằng chạm)'} title={padOff ? 'Hiện phím ảo' : 'Ẩn phím ảo — chơi bằng chạm'} />
+  );
 
   const textOk = ASCII.test(text);
   const sendText = async e => {
@@ -245,7 +271,7 @@ export default function Viewer({ tab }) {
 
   return (
     <div className="v-scrim">
-      <div ref={root} className={'viewer' + (fs ? ' is-fs' : '') + (nums ? ' nums-on' : '')} role="dialog" aria-modal="true" aria-label={`Màn chơi ${tab.name}`} tabIndex={-1}
+      <div ref={root} className={'viewer' + (fs ? ' is-fs' : '') + (nums ? ' nums-on' : '') + (padOff ? ' pad-off' : '')} role="dialog" aria-modal="true" aria-label={`Màn chơi ${tab.name}`} tabIndex={-1}
         data-keypad={prefs.keypad_size || 'md'} style={{ '--pad-opacity': opacity }}>
         {!padMode && <header className="v-head">
           <div className="v-title min0">
@@ -260,6 +286,7 @@ export default function Viewer({ tab }) {
           <div className="v-head-actions">
             {wide && <span className="v-help" tabIndex={0} role="img" aria-label="Phím tắt: mũi tên, Enter, Esc, F1/F2, Backspace, Space, 0–9, * và #"
               title="Phím tắt: mũi tên, Enter, Esc, F1/F2, Backspace, Space, 0–9, * và #"><HelpCircle size={18} aria-hidden /></span>}
+            {padToggle()}
             <Button variant="ghost" icon={fs ? Minimize2 : Maximize2} aria-label={fs ? 'Thoát toàn màn hình' : 'Toàn màn hình'} title={fs ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFs} />
             <button type="button" className="btn btn-ghost btn-icon" onClick={close} aria-label="Đóng"><X size={20} /></button>
           </div>
@@ -294,6 +321,7 @@ export default function Viewer({ tab }) {
           ) : null}
           {/* Landscape phone: gamepad overlays on the sides of the game */}
           {padMode && <>
+          {!padOff && <>
           <div className="v-overlay left">
             <DPad onKey={send} disabled={!live} className="pad-dpad" />
           </div>
@@ -306,7 +334,9 @@ export default function Viewer({ tab }) {
             </div>
             {nums && <NumPad onKey={send} disabled={!live} className="pad-nums" />}
           </div>
+          </>}
           <div className="v-overlay top-left">
+            {padToggle()}
             <Button variant="ghost" icon={fs ? Minimize2 : Maximize2} aria-label={fs ? 'Thoát toàn màn hình' : 'Toàn màn hình'} onClick={toggleFs} />
             <div className="menu">
               <Button variant="ghost" icon={MoreHorizontal} aria-label="Tuỳ chọn màn chơi" aria-expanded={panel === 'more'} onClick={() => setPanel(panel === 'more' ? null : 'more')} />
@@ -320,21 +350,21 @@ export default function Viewer({ tab }) {
         <div className="v-soft">
           <Soft k="F1">◤ Trái</Soft>
           <button type="button" className={'btn btn-sm v-123' + (nums ? ' on' : '')} aria-pressed={nums} onClick={() => setNums(!nums)}>{nums ? 'D-pad' : '123'}</button>
-          <small className="dim v-hint">Chạm / vuốt trên màn hình</small>
+          <small className="dim v-hint">{padOff ? 'Đang chơi bằng chạm — bấm biểu tượng tay cầm để hiện phím' : 'Chạm / vuốt trên màn hình'}</small>
           <Soft k="F2">Phải ◥</Soft>
         </div>
 
-        <div className="v-pad">
+        {!padOff && <div className="v-pad">
           <DPad onKey={send} disabled={!live} />
           <NumPad onKey={send} disabled={!live} />
           {wide && <div className="v-side-text">{textPanel}<p className="hint">Bàn phím: mũi tên, Enter, Esc, F1/F2, Backspace, Space, 0–9, * và #.</p></div>}
-        </div>
+        </div>}
 
         <footer className="v-foot">
           <Segmented label="Tốc độ khung hình" value={fps} onChange={chooseFps} options={STREAM.fps_choices.map(f => [f, `${f}`])} />
           <span className="grow" />
           {j2me && <Button icon={RotateCw} aria-expanded={panel === 'screen'} onClick={() => setPanel(panel === 'screen' ? null : 'screen')}><span className="v-label">Màn hình</span></Button>}
-          {!wide && <Button icon={Keyboard} aria-expanded={panel === 'text'} onClick={() => setPanel(panel === 'text' ? null : 'text')}><span className="v-label">Gõ chữ</span></Button>}
+          {(!wide || padOff) && <Button icon={Keyboard} aria-expanded={panel === 'text'} onClick={() => setPanel(panel === 'text' ? null : 'text')}><span className="v-label">Gõ chữ</span></Button>}
           {wide ? moreItems.map(m => <Button key={m.label} icon={m.icon} onClick={m.onClick} disabled={m.disabled}>{m.label}</Button>)
             : <Menu label="Thêm" items={moreItems} />}
         </footer>

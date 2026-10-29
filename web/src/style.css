@@ -712,6 +712,12 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
   .v-pad .key { height: 42px; }
   .v-foot { min-height: 48px; padding: 4px var(--s-md) calc(4px + env(safe-area-inset-bottom)); }
 }
+/* touch mode (virtual keys hidden): the game takes the keypad's space */
+.viewer.pad-off { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "stage" "soft" "foot"; }
+.viewer.pad-off .v-123 { display: none; }
+@media (max-width: 1080px), (max-height: 500px) {
+  .viewer.pad-off { grid-template-rows: auto minmax(120px, 1fr) auto auto; }
+}
 /* short portrait screens: number pad behind a "123" toggle */
 @media (max-width: 1080px) and (max-height: 699px) and (orientation: portrait) {
   .v-123 { display: inline-flex; }
