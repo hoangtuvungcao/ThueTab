@@ -18,11 +18,19 @@ RELEASE="$(curl -4 -fsSL --retry 5 "${AUTH[@]}" -H "Accept: application/vnd.gith
   echo "Không đọc được bản phát hành của $REPO (repo riêng tư cần GITHUB_TOKEN)." >&2; exit 1; }
 
 # One line per app build: <asset id> <size> <name>
-python3 -c '
+ASSETS="$(python3 -c '
 import json,sys
 for a in json.load(sys.stdin).get("assets",[]):
     if a["name"].startswith("ThueTab-"): print(a["id"], a["size"], a["name"])
-' <<<"$RELEASE" | while read -r ID SIZE NAME; do
+' <<<"$RELEASE")"
+# Builds no longer in the release (e.g. ThueTab-Windows.exe replaced by ThueTab-Windows.zip) are removed.
+for F in "$DEST"/ThueTab-*; do
+  [ -e "$F" ] || continue
+  B="$(basename "$F")"; B="${B%.part}"
+  grep -q " $B\$" <<<"$ASSETS" || { rm -f "$F"; echo "✗ bỏ bản cũ $(basename "$F")"; }
+done
+while read -r ID SIZE NAME; do
+  [ -n "$ID" ] || continue
   FILE="$DEST/$NAME"
   if [ -f "$FILE" ] && [ "$(stat -c%s "$FILE")" = "$SIZE" ]; then echo "✓ $NAME (đã có)"; continue; fi
   echo "-> $NAME ($((SIZE / 1048576)) MB)"
@@ -34,6 +42,5 @@ for a in json.load(sys.stdin).get("assets",[]):
     [ "$GOT" -gt "$SIZE" ] && rm -f "$FILE.part"   # corrupt resume: start over
     echo "   đứt ở $((GOT / 1048576))/$((SIZE / 1048576)) MB — tải tiếp (lần $TRY)"; sleep 3
   done
-done
-chmod +x "$DEST/ThueTab-Linux.x86_64" 2>/dev/null || true
+done <<<"$ASSETS"
 ls -lh "$DEST"

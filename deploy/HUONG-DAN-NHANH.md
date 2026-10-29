@@ -54,6 +54,17 @@ Bản cài Android / Windows / Linux / macOS được build sẵn và đăng ở
 **tải về máy chủ** (`/opt/thuetab/data/downloads/`) và trang **Tải ứng dụng** phục vụ trực tiếp từ máy chủ — người
 dùng không cần truy cập GitHub. iOS luôn hướng dẫn "Chia sẻ → Thêm vào Màn hình chính".
 
+| Nền tảng | File | Cài |
+|---|---|---|
+| Android | `ThueTab-Android.apk` | mở file, cho phép cài từ nguồn này |
+| Windows | `ThueTab-Windows.zip` | giải nén, chạy `ThueTab/ThueTab.exe` (cần cả file `.dll` bên cạnh) |
+| Linux | `ThueTab-Linux.tar.gz` | `tar xf`, chạy `ThueTab/ThueTab.x86_64` |
+| macOS | `ThueTab-macOS.zip` | giải nén, chuột phải → Mở (lần đầu) |
+
+App xem màn chơi bằng video H.264 (thư viện giải mã trong `native/h264/`, mã nguồn `native-ext/`), nên đạt 30/60 FPS
+cả khi mạng upload của máy chủ yếu. Thiếu thư viện thì app tự dùng ảnh JPEG (chậm hơn).
+**Cập nhật máy chủ trước rồi mới phát hành app mới** — app 1.2 gửi xác nhận khung hình mà máy chủ cũ không hiểu.
+
 **Repo riêng tư**: tạo token GitHub (Settings → Developer settings → Fine-grained tokens → chọn repo `ThueTab`,
 quyền **Contents: Read-only**) rồi thêm `--github-token <token>` vào lệnh cài. Token được lưu trong
 `/opt/thuetab/.env` để lần sau tải lại. Clone/pull repo riêng tư:
@@ -63,18 +74,20 @@ Tải lại bản mới nhất: `cd /opt/thuetab && GITHUB_TOKEN=<token> bash sc
 Phát hành phiên bản mới (trên máy build có Godot 4.7.2 + export templates, Android SDK, Java):
 ```bash
 bash scripts/build-apps.sh --api https://thuetab.hidev.dev --godot /đường/dẫn/Godot_v4.7.2
-gh release create v1.2.0 exports/ThueTab-{Android.apk,Windows.exe,Linux.x86_64,macOS.zip}
+gh release create v1.2.0 exports/ThueTab-{Android.apk,Windows.zip,Linux.tar.gz,macOS.zip}
 ```
 Khoá ký Android: `data/android-release.keystore` + `data/android-keystore.txt` (không có trên GitHub) —
 **sao lưu và giữ bí mật**, mọi bản APK cập nhật phải ký bằng đúng khoá này.
 
 ## 4. Nạp tiền SePay
 Webhook: `https://thuetab.hidev.dev/api/payments/sepay`, xác thực API Key (≥32 ký tự).
-Giới hạn CPU mỗi tab: `TAB_CPUS=1` (mặc định) trong `.env` — tab chỉ dùng khi cần, tab rảnh nhường CPU cho tab khác.
-Băng thông video mỗi tab đang xem: `STREAM_KBPS=600` (mặc định, ~75 KB/s). Mạng upload khoẻ có thể tăng 1000–1500 cho hình nét hơn.
-
 Điền `SEPAY_API_KEY`, `SEPAY_API_TOKEN`, `BANK_*` trong `/opt/thuetab/.env` rồi khởi động lại API.
 Chi tiết: mục "Nạp tiền SePay" trong `deploy/README.md`.
+
+## Hiệu năng (`/opt/thuetab/.env`, sửa xong `sudo systemctl restart thuetab-worker`)
+- `TAB_CPUS=1` (mặc định): giới hạn CPU mỗi tab — chỉ là mức trần, tab rảnh nhường CPU cho tab khác.
+- `STREAM_KBPS=600` (mặc định, ~75 KB/s): băng thông video tối đa mỗi tab đang xem. Upload khoẻ có thể tăng
+  1000–1500 cho hình nét hơn; upload yếu (~1 Mbit/s) giữ 600.
 
 ## Cập nhật phiên bản
 ```bash

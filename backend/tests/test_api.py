@@ -616,3 +616,16 @@ def test_order_code_matches_sepay_default_template():
        'transferAmount':20000,'content':'MBVCB.123 '+o['code']+' chuyen tien','code':o['code']}
     assert webhook.post('/api/payments/sepay',headers=headers,json=b).json()['matched'] is True
     assert c.get('/api/me').json()['balance']==before+20000
+
+
+def test_download_archives_matched_by_name(tmp_path, monkeypatch):
+    # Windows and macOS builds are both .zip: the platform comes from the file name.
+    import backend.app as m
+    d=m.DATA_DIR/'downloads'; d.mkdir(parents=True,exist_ok=True)
+    for f in d.glob('*'): f.unlink()
+    for n in ('ThueTab-Windows.zip','ThueTab-macOS.zip','ThueTab-Linux.tar.gz'): (d/n).write_bytes(b'PK')
+    try:
+        dl={x['platform']:x['file'] for x in TestClient(app).get('/api/config').json()['downloads']}
+        assert dl=={'windows':'ThueTab-Windows.zip','macos':'ThueTab-macOS.zip','linux':'ThueTab-Linux.tar.gz'}
+    finally:
+        for f in d.glob('*'): f.unlink()

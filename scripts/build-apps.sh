@@ -46,20 +46,30 @@ fi
 
 # Import resources once, then export each platform.
 "$GODOT" --headless --path "$STAGE" --import >/dev/null 2>&1 || true
+# Windows/Linux ship as an archive: the executable plus the H.264 decoder library (native/h264) next to it.
 declare -A EXT=([Linux]=x86_64 [Windows]=exe [Android]=apk [macOS]=zip)
+declare -A PKG=([Linux]=ThueTab-Linux.tar.gz [Windows]=ThueTab-Windows.zip [Android]=ThueTab-Android.apk [macOS]=ThueTab-macOS.zip)
 IFS=',' read -ra TARGETS <<< "$ONLY"
 FAILED=()
 for P in "${TARGETS[@]}"; do
-  FILE="$OUT/ThueTab-$P.${EXT[$P]}"
-  rm -f "$FILE"
+  DIR="$OUT/$P/ThueTab"
+  rm -rf "$OUT/$P" "$OUT/${PKG[$P]}"
+  mkdir -p "$DIR"
+  FILE="$DIR/ThueTab.${EXT[$P]}"
   echo "==> $P"
   if "$GODOT" --headless --path "$STAGE" --export-release "$P" "$FILE" > "$OUT/build-$P.log" 2>&1 && [ -s "$FILE" ]; then
-    cp "$FILE" "$ROOT/data/downloads/"
-    ls -lh "$FILE" | awk '{print "    " $5 "  " $9}'
+    case "$P" in
+      Windows) (cd "$OUT/$P" && python3 -c 'import shutil;shutil.make_archive("../ThueTab-Windows","zip",".","ThueTab")') ;;
+      Linux) tar -C "$OUT/$P" -czf "$OUT/${PKG[$P]}" ThueTab ;;
+      *) mv "$FILE" "$OUT/${PKG[$P]}" ;;
+    esac
+    rm -rf "$OUT/$P"
+    cp "$OUT/${PKG[$P]}" "$ROOT/data/downloads/"
+    ls -lh "$OUT/${PKG[$P]}" | awk '{print "    " $5 "  " $9}'
   else
     FAILED+=("$P"); echo "    LỖI — xem $OUT/build-$P.log"
   fi
 done
 [ ${#FAILED[@]} -eq 0 ] || { echo "Build lỗi: ${FAILED[*]}"; exit 1; }
 echo "Đã đăng lên trang Tải ứng dụng (data/downloads/)."
-echo "Phát hành cho server tải về: gh release create vX.Y.Z exports/ThueTab-{Android.apk,Windows.exe,Linux.x86_64,macOS.zip}"
+echo "Phát hành cho server tải về: gh release create vX.Y.Z exports/ThueTab-{Android.apk,Windows.zip,Linux.tar.gz,macOS.zip}"

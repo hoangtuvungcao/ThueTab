@@ -26,11 +26,11 @@ presets=[]
 OPTIONS={
   'Linux':'binary_format/embed_pck=true\n',
   'Windows':'binary_format/embed_pck=true\napplication/modify_resources=false\napplication/product_name="ThuêTab"\napplication/file_description="ThuêTab"\n',
-  'Android':('package/unique_name="com.thuetab.app"\npackage/name="ThuêTab"\nversion/code=110\nversion/name="1.1.0"\n'
+  'Android':('package/unique_name="com.thuetab.app"\npackage/name="ThuêTab"\nversion/code=120\nversion/name="1.2.0"\n'
              'permissions/internet=true\npermissions/vibrate=true\ngradle_build/use_gradle_build=false\n'
              'architectures/arm64-v8a=true\narchitectures/armeabi-v7a=true\narchitectures/x86_64=false\n'
              'screen/immersive_mode=false\nscreen/support_small=true\nscreen/support_normal=true\nscreen/support_large=true\nscreen/support_xlarge=true\n'),
-  'macOS':('application/bundle_identifier="com.thuetab.app"\napplication/short_version="1.1.0"\napplication/version="1.1.0"\n'
+  'macOS':('application/bundle_identifier="com.thuetab.app"\napplication/short_version="1.2.0"\napplication/version="1.2.0"\n'
            'binary_format/architecture="universal"\ncodesign/codesign=1\nnotarization/notarization=0\n'),
 }
 for i,(name,platform,ext) in enumerate([('Linux','Linux','x86_64'),('Windows','Windows Desktop','exe'),('Android','Android','apk'),('macOS','macOS','zip')]):

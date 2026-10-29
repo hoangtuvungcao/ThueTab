@@ -150,7 +150,8 @@ func _process(_delta: float) -> void:
 			else:
 				_schedule_retry(text)
 	if t - _fps_t0 >= 1.0:
-		_fps_now = _frames / (t - _fps_t0)
+		# A new viewer (or an FPS switch) gets a short catch-up burst of frames: never report above the chosen rate.
+		_fps_now = minf(_frames / (t - _fps_t0), float(fps))
 		_frames = 0
 		_fps_t0 = t
 		stats.emit(_fps_now, _ping_ms, _live)

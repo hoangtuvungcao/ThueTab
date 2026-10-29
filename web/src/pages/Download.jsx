@@ -20,6 +20,15 @@ export function detectPlatform() {
 }
 
 const OS_ICON = { Windows: Monitor, macOS: Laptop, Linux: Monitor, Android: Smartphone, iOS: Smartphone };
+// One-line install steps per platform, shown under each download button.
+const HOW = {
+  windows: 'Giải nén file .zip, mở thư mục ThueTab rồi chạy ThueTab.exe. Nếu Windows cảnh báo: Thông tin thêm → Vẫn chạy.',
+  linux: 'Giải nén (tar xf ThueTab-Linux.tar.gz) rồi chạy ThueTab/ThueTab.x86_64.',
+  macos: 'Giải nén, kéo ThuêTab vào Applications. Lần đầu: chuột phải vào ứng dụng → Mở.',
+  android: 'Mở file .apk vừa tải, cho phép "Cài ứng dụng không rõ nguồn" nếu được hỏi, rồi chọn Cài đặt.'
+};
+const howTo = d => HOW[(d.platform || '').toLowerCase()];
+
 const matchOs = (d, os) => (d.platform || d.label || '').toLowerCase().includes(os.toLowerCase().replace('macos', 'mac'));
 const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -90,6 +99,7 @@ export default function Download() {
                 <a className="btn btn-primary btn-lg" href={dlUrl(native.url)} download><DownloadIcon size={18} aria-hidden /> Tải {native.label || 'bản cài'}</a>
                 <small className="muted num">{native.size ? fileSize(native.size) : ''}{native.updated ? ` · cập nhật ${dateTime(native.updated)}` : ''}</small>
               </div>
+              {howTo(native) && <small className="muted dl-how">{howTo(native)}</small>}
             </>
           ) : (
             <>
@@ -110,6 +120,7 @@ export default function Download() {
               <div className="dl-card-head"><span className="dl-icon"><I size={20} aria-hidden /></span>
                 <div className="min0"><strong className="ellipsis" title={d.label}>{d.label || d.platform}</strong>
                   <small className="muted num">{d.size ? fileSize(d.size) : ''}{d.updated ? ` · ${dateTime(d.updated)}` : ''}</small></div></div>
+              {howTo(d) && <small className="muted dl-how">{howTo(d)}</small>}
               <a className="btn" href={dlUrl(d.url)} download><DownloadIcon size={16} aria-hidden /> Tải xuống</a>
             </Card>
           );

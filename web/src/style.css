@@ -1204,3 +1204,5 @@ form > .row:last-child { justify-content: flex-end; }
 .qr-hint { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--muted); text-align: center; }
 .qr-hint svg { width: 14px; height: 14px; flex: none; }
 @media (max-width: 640px) { .share-qr { flex-direction: column; text-align: center; } }
+
+.dl-how { display: block; line-height: 1.45; overflow-wrap: anywhere; }

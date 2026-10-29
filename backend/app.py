@@ -64,9 +64,10 @@ SITE_DEFAULTS = {
 }
 DOWNLOAD_DIR_NAME = 'downloads'
 # App builds an operator drops into data/downloads/, matched by file name.
+# Matched by file-name ending: the Windows and macOS builds are both .zip archives.
 DOWNLOAD_PLATFORMS = [
-    ('windows','Windows',('.exe','.msi')),('android','Android',('.apk',)),('linux','Linux',('.x86_64','.AppImage','.tar.gz')),
-    ('macos','macOS',('.dmg','.zip')),
+    ('windows','Windows',('.exe','.msi','Windows.zip')),('android','Android',('.apk',)),
+    ('linux','Linux',('.x86_64','.AppImage','.tar.gz')),('macos','macOS',('.dmg','macOS.zip')),
 ]  # iOS: the web app installed to the home screen (PWA), no native build
 ph = PasswordHasher()
 uid = lambda: secrets.token_hex(12)
