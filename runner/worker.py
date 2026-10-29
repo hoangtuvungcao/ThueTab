@@ -10,6 +10,9 @@ if len(TOKEN)<32: raise SystemExit('WORKER_TOKEN must be at least 32 characters'
 API=os.getenv('API_URL','http://127.0.0.1:8000')
 WS_API='ws'+API.removeprefix('http')
 WORKER=os.getenv('WORKER_ID','local-1')
+# CPU cap per tab (a ceiling, not a reservation: idle tabs leave their share to busy ones). The emulator and the
+# video encoder share it, so below ~1 CPU both stutter while someone is watching.
+TAB_NANO_CPUS=int(float(os.getenv('TAB_CPUS','1'))*1e9)
 client=docker.from_env(timeout=8)
 http=httpx.Client(base_url=API,headers={'Authorization':'Bearer '+TOKEN},timeout=8)
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
@@ -93,7 +96,7 @@ def start(t):
         security_opt=['no-new-privileges:true'],
         mem_limit='512m',
         memswap_limit='512m',
-        nano_cpus=500_000_000,
+        nano_cpus=TAB_NANO_CPUS,
         pids_limit=96,
         shm_size='32m',
         tmpfs={'/tmp':'rw,nosuid,nodev,size=64m,mode=1777'},
@@ -241,6 +244,10 @@ def main():
                 c=existing.get(id)
                 if c and c.labels.get('thuetab.rev')!=revision(t):
                     remove(c);c=None;retry_at.pop(id,None)
+                if c and c.attrs['HostConfig'].get('NanoCpus')!=TAB_NANO_CPUS:
+                    # TAB_CPUS changed: apply in place, the game keeps running.
+                    try: client.api._result(client.api._post_json(client.api._url('/containers/{0}/update',c.id),data={'NanoCpus':TAB_NANO_CPUS}),True)
+                    except Exception as e: logging.warning('Cannot update CPU of %s: %s',id,type(e).__name__)
                 if c and c.status!='running':
                     remove(c);c=None
                     if id not in retry_at: retry_at[id]=tick+15

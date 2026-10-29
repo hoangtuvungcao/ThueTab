@@ -70,6 +70,8 @@ Khoá ký Android: `data/android-release.keystore` + `data/android-keystore.txt`
 
 ## 4. Nạp tiền SePay
 Webhook: `https://thuetab.hidev.dev/api/payments/sepay`, xác thực API Key (≥32 ký tự).
+Giới hạn CPU mỗi tab: `TAB_CPUS=1` (mặc định) trong `.env` — tab chỉ dùng khi cần, tab rảnh nhường CPU cho tab khác.
+
 Điền `SEPAY_API_KEY`, `SEPAY_API_TOKEN`, `BANK_*` trong `/opt/thuetab/.env` rồi khởi động lại API.
 Chi tiết: mục "Nạp tiền SePay" trong `deploy/README.md`.
 
