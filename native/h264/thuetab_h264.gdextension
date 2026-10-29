@@ -1,0 +1,11 @@
+; H.264 decoder for the live view (native-ext/, h264bsd — Apache 2.0). Optional: without it the app uses JPEG frames.
+[configuration]
+entry_symbol = "thuetab_h264_init"
+compatibility_minimum = "4.7"
+
+[libraries]
+linux.x86_64 = "res://native/h264/bin/libthuetab_h264.linux.x86_64.so"
+windows.x86_64 = "res://native/h264/bin/thuetab_h264.windows.x86_64.dll"
+macos = "res://native/h264/bin/libthuetab_h264.macos.universal.dylib"
+android.arm64 = "res://native/h264/bin/libthuetab_h264.android.arm64.so"
+android.arm32 = "res://native/h264/bin/libthuetab_h264.android.arm32.so"

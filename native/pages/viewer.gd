@@ -492,7 +492,10 @@ func _layout_body() -> void:
 
 ## The screen keeps the frame aspect (portrait J2ME vs landscape Java PC) and fits the column + window.
 func _fps_pref() -> int:
-	var choices: Array = T.stream("fps_choices", [30, 60])
+	# JSON numbers are floats (30.0) while the buttons store ints (60): compare as ints, or 60 never matches.
+	var choices: Array[int] = []
+	for c in T.stream("fps_choices", [30, 60]):
+		choices.append(int(c))
 	var v := int(app.uprefs().get("default_fps", T.stream("default_fps", 30)))
 	return v if v in choices else int(T.stream("default_fps", 30))
 

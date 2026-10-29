@@ -1,6 +1,8 @@
 extends Node
 ## Real-time frame source: WebSocket ws(s)://<host>/api/tabs/{id}/stream?fps=N (design/README.md).
-## Binary packets are JPEG frames; only the newest one per _process is decoded. Input (key/text/tap)
+## Binary packets are H.264 access units when the native decoder (native/h264, class H264Decoder) is present —
+## ~10x less data than JPEG, so 30/60 fps fits a slow server uplink — otherwise JPEG frames, of which only the
+## newest per _process is decoded. Input (key/text/tap)
 ## goes over the socket as JSON, falling back to HTTP when the socket is not open. Reconnects with backoff;
 ## while not streaming, an embedded FrameSource polls GET /frame so a still image is shown.
 ## Exposes the same signals/methods as frame_source.gd, so the viewer can use either.
@@ -43,6 +45,9 @@ var _fps_now: float = 0.0
 var _ping_ms: int = -1
 var _ping_sent: float = -1.0
 var _next_ping: float = 0.0
+var _dec: Object  # H264Decoder for the current connection, or null (JPEG)
+var _video_errors: int = 0
+var _video_off: bool = false  # decoder missing or failing: JPEG for the rest of this viewer's life
 const PING_EVERY := 3.0
 const ACK := "{\"type\":\"ack\"}"
 
@@ -77,10 +82,13 @@ static func _now() -> float:
 func _url() -> String:
 	var base: String = api.endpoint
 	base = base.replace("https://", "wss://").replace("http://", "ws://")
-	return "%s/api/tabs/%s/stream?fps=%d&ack=1" % [base, tab_id, fps]
+	return "%s/api/tabs/%s/stream?fps=%d&ack=1%s" % [base, tab_id, fps, "&codec=h264" if _dec else ""]
 
 
 func _connect_ws() -> void:
+	# Fresh decoder per connection: the server starts every viewer at a keyframe.
+	_dec = ClassDB.instantiate("H264Decoder") if not _video_off and ClassDB.class_exists("H264Decoder") else null
+	_video_errors = 0
 	_ws = WebSocketPeer.new()
 	_ws.handshake_headers = PackedStringArray(["Authorization: Bearer " + str(api.token)])
 	_ws.inbound_buffer_size = 4 * 1024 * 1024
@@ -148,23 +156,44 @@ func _process(_delta: float) -> void:
 		stats.emit(_fps_now, _ping_ms, _live)
 
 
-## Drain all queued packets; decode only the newest JPEG.
+## Drain all queued packets. Video frames depend on the previous ones, so every one is decoded (≈1–2 ms
+## each) and only the last picture is shown; for JPEG only the newest frame is decoded.
 func _drain() -> void:
 	var newest := PackedByteArray()
+	var picture := false
 	while _ws.get_available_packet_count() > 0:
 		var pkt := _ws.get_packet()
 		if _ws.was_string_packet():
 			_on_text(pkt.get_string_from_utf8())
-		else:
+			continue
+		_frames += 1
+		# Acknowledge each frame: the server keeps only a few in flight, so a slow link never
+		# builds up seconds of delay (inputs and FPS changes would queue behind them).
+		_ws.send_text(ACK)
+		if pkt.size() > 1 and pkt[0] == 0xFF and pkt[1] == 0xD8:
 			newest = pkt
-			_frames += 1
-			# Acknowledge each frame: the server keeps only a few in flight, so a slow link never
-			# builds up seconds of delay (inputs and FPS changes would queue behind them).
-			_ws.send_text(ACK)
-	if newest.is_empty():
-		return
-	if _img.load_jpg_from_buffer(newest) == OK:
+		elif _dec:
+			var r: int = _dec.decode(pkt)
+			if r == 1:
+				picture = true
+				_video_errors = 0
+			elif r < 0:
+				_video_errors += 1
+	if picture:
+		var w: int = _dec.get_width()
+		var h: int = _dec.get_height()
+		if _img.get_width() == w and _img.get_height() == h and _img.get_format() == Image.FORMAT_RGBA8:
+			_img.set_data(w, h, false, Image.FORMAT_RGBA8, _dec.get_rgba())
+		else:
+			_img = Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, _dec.get_rgba())
 		frame.emit(_img)
+	elif not newest.is_empty() and _img.load_jpg_from_buffer(newest) == OK:
+		frame.emit(_img)
+	if _video_errors > 30:
+		# Undecodable video: reconnect asking for JPEG.
+		_video_off = true
+		_close()
+		_retry_at = 0.0
 
 
 func _on_text(raw: String) -> void:

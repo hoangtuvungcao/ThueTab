@@ -19,6 +19,8 @@ sleep 1
 JAVA_OPTS="-Xms16m -Xmx128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 -Xss256k
   -XX:MaxMetaspaceSize=64m -XX:ReservedCodeCacheSize=24m -XX:ActiveProcessorCount=1
   -Djava.io.tmpdir=/tmp -Duser.home=/tmp/home"
+# The game runs at lower priority: many J2ME games busy-loop and would take the whole CPU allowance, starving the
+# screen capture/encoder (live view drops to a few fps). Niced, the game still gets every cycle the encoder leaves.
 # GAME_KIND/MIDLET_CLASS come from the API, which reads the JAR manifest at upload time.
 if [ "${GAME_KIND:-jar}" = "midp" ]; then
   EMU=/opt/emu
@@ -31,8 +33,8 @@ if [ "${GAME_KIND:-jar}" = "midp" ]; then
   CP="$EMU/microemulator.jar:$EMU/nokiaui.jar:$EMU/jsr135.jar:/tmp/device"
   DEVICE=thuetab/device.xml
   if [ -n "${MIDLET_CLASS:-}" ]; then
-    exec java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" --appclasspath /opt/game/game.jar "$MIDLET_CLASS"
+    exec nice -n 10 java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" --appclasspath /opt/game/game.jar "$MIDLET_CLASS"
   fi
-  exec java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" /opt/game/game.jar
+  exec nice -n 10 java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" /opt/game/game.jar
 fi
-exec java $JAVA_OPTS -jar /opt/game/game.jar
+exec nice -n 10 java $JAVA_OPTS -jar /opt/game/game.jar

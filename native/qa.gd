@@ -163,9 +163,11 @@ func run(main: Node) -> void:
 		waited += 0.5
 	await _wait(2.0)
 	print("QA: stream live=%s readout=%s" % [app.page.source.is_live(), app.page._readout.text])
+	# Same path as the "60 FPS" button: saved preference + live switch; the choice must stick.
+	app.set_user_pref("default_fps", 60)
 	app.page.source.set_fps(60)
-	await _wait(2.5)
-	print("QA: 60fps readout=%s" % app.page._readout.text)
+	await _wait(8.0)
+	print("QA: 60fps pref=%d readout=%s" % [app.page._fps_pref(), app.page._readout.text])
 	app.page.source.set_fps(30)
 	for k in ["5", "F1", "asterisk"]:
 		await app.page.send(k)

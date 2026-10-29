@@ -72,15 +72,22 @@ func _section(parent: Node, title: String, hint: String) -> VBoxContainer:
 
 
 ## Segmented choice saved to a pref. `swatch` shows the accent colours of tokens.accents entries.
+## Prefs from the server are JSON (numbers are floats: 60.0), options are ints (60): compare numbers by value.
+static func _same(a: Variant, b: Variant) -> bool:
+	if typeof(a) in [TYPE_INT, TYPE_FLOAT] and typeof(b) in [TYPE_INT, TYPE_FLOAT]:
+		return is_equal_approx(float(a), float(b))
+	return str(a) == str(b)
+
+
 func _choice(parent: Node, title: String, options: Array, current: Variant, key: String, swatch: bool = false) -> void:
 	var box := UI.vbox(parent, T.space("xs") + 2)
 	UI.label(box, title, "MutedLabel")
 	var row := UI.flow(box, T.space("xs") + 2)
 	for o in options:
 		var value: Variant = o[0]
-		var active := str(value) == str(current)
+		var active := _same(value, current)
 		var b := UI.button(row, str(o[1]), func() -> void:
-			if str(value) != str(app.uprefs().get(key)):
+			if not _same(value, app.uprefs().get(key)):
 				app.set_user_pref(key, value), "ChipButtonActive" if active else "ChipButton")
 		b.custom_minimum_size.y = UI.target_h(34)
 		if swatch:
