@@ -86,7 +86,8 @@ docker info >/dev/null 2>&1 || { echo "Docker không chạy được — xem: sy
 echo "==> Chép mã nguồn vào $APP"
 mkdir -p "$APP"
 if [ "$SRC" != "$APP" ]; then
-  rsync -a --delete --exclude .venv --exclude web/node_modules --exclude .godot --exclude data \
+  # Keep the server-only files (.env with secrets, data, venv) when syncing a new version.
+  rsync -a --delete --exclude .env --exclude .venv --exclude web/node_modules --exclude .godot --exclude data \
     --exclude .staging --exclude exports "$SRC"/ "$APP"/
 fi
 id thuetab >/dev/null 2>&1 || useradd -r -d "$APP" -s /usr/sbin/nologin thuetab
