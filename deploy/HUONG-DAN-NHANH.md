@@ -16,10 +16,10 @@
 - Đặt tên `thuetab`, chép **token** ở bước cài đặt.
 - Public hostname: `thuetab.hidev.dev` → Service `HTTP` → `localhost:8080`.
 
-**Trên máy Debian** (cần sẵn Docker):
+**Trên máy Debian mới** (script tự cài Docker, Python… — chạy bằng root):
 ```bash
-git clone https://github.com/hoangtuvungcao/ThueTab.git && cd ThueTab
-sudo bash deploy/install-debian.sh \
+apt-get update -qq && apt-get install -y -qq git && git clone https://github.com/hoangtuvungcao/ThueTab.git && cd ThueTab
+bash deploy/install-debian.sh \
   --origin https://thuetab.pages.dev \
   --listen 0.0.0.0 --port 8080 \
   --cf-token <TOKEN_TUNNEL>
@@ -69,3 +69,9 @@ Chi tiết: mục "Nạp tiền SePay" trong `deploy/README.md`.
 cd ~/ThueTab && git pull && sudo bash deploy/install-debian.sh --origin https://thuetab.pages.dev --listen 0.0.0.0 --port 8080
 ```
 (giữ nguyên `.env`, dữ liệu và tài khoản; image game mới được build lại và mọi tab tự chuyển sang.)
+
+## Lưu ý tunnel
+Một tunnel chỉ nên có **một** nơi chạy `cloudflared` cho ứng dụng này. Nếu tunnel `thuetab` đang chạy ở máy khác
+(ví dụ Windows), khi chuyển sang VPS hãy gỡ bản cũ (`cloudflared service uninstall` trên máy đó), nếu không
+Cloudflare chia lượng truy cập giữa hai máy và một nửa request sẽ lỗi. Token: Tunnels → `thuetab` →
+**Add a replica** → chép phần `eyJ…` trong lệnh `cloudflared service install eyJ…`.

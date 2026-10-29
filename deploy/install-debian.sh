@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-shot install of ThuêTab on a Debian 12/13 machine (VM or VPS) that already has Docker.
+# One-shot install of ThuêTab on a fresh Debian 12/13 machine (VM or VPS); installs Docker if missing.
 # Lightweight setup for small machines: SQLite instead of PostgreSQL, zram swap, capacity sized from RAM/CPU.
 #
 #   sudo bash deploy/install-debian.sh --origin https://thuetab.pages.dev --listen 0.0.0.0 --port 8080 \
@@ -27,13 +27,21 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$ORIGIN" ] || { echo "Thiếu --origin: domain giao diện web (ví dụ --origin https://thuetab.pages.dev)" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || { echo "Hãy chạy bằng root: sudo bash $0 ..." >&2; exit 1; }
-docker info >/dev/null 2>&1 || { echo "Chưa có Docker hoặc Docker chưa chạy." >&2; exit 1; }
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 APP=/opt/thuetab
 echo "==> Cài gói hệ thống"
 apt-get update -qq
-apt-get install -y -qq python3-venv python3-pip rsync zram-tools curl >/dev/null
+apt-get install -y -qq python3-venv python3-pip rsync zram-tools curl ca-certificates >/dev/null
+if ! command -v docker >/dev/null; then
+  echo "==> Cài Docker (gói docker.io của Debian)"
+  apt-get install -y -qq docker.io >/dev/null
+fi
+# BuildKit is needed for the game image (ADD --checksum); Debian ships it as docker-buildx where available.
+apt-get install -y -qq docker-buildx >/dev/null 2>&1 || true
+export DOCKER_BUILDKIT=1
+systemctl enable --now docker >/dev/null 2>&1 || true
+docker info >/dev/null 2>&1 || { echo "Docker không chạy được — xem: systemctl status docker" >&2; exit 1; }
 
 echo "==> Chép mã nguồn vào $APP"
 mkdir -p "$APP"
