@@ -58,7 +58,7 @@ export default function ShareView({ token }) {
             {s.can_control ? <Badge color="success"><Gamepad2 size={12} aria-hidden /> Được điều khiển</Badge> : <Badge color="info"><Eye size={12} aria-hidden /> Chỉ xem</Badge>}
             {s.label && <span className="muted small ellipsis">{s.label}</span>}
             <span className="dim small num" title={dateTime(s.expires)}><Clock size={12} aria-hidden /> Link {remaining(s.expires).toLowerCase()}</span>
-            {live && info.hasFrame && <span className="stream-meter num">{info.fps < 3 ? <b>Màn hình tĩnh</b> : <><b>{info.fps}</b> FPS</>}</span>}
+            {live && info.hasFrame && <span className="stream-meter num"><b>{info.fps}</b> FPS</span>}
           </div>
         </div>
         <div className="row gap-sm wrap">

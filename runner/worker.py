@@ -1,5 +1,5 @@
 """Trusted local worker. Only this process can access Docker; never expose its socket to API."""
-import os, time, json, logging, threading
+import os, time, json, shlex, logging, threading
 from pathlib import Path
 import docker, httpx
 from docker.errors import NotFound
@@ -121,6 +121,23 @@ def send_input(c,t,cmd):
     args=xdotool_args(t,cmd)
     if args: c.exec_run(['xdotool',*args],environment={'DISPLAY':':99'})
 
+class InputPipe:
+    """One long-lived shell in the tab reading xdotool commands from stdin. A docker exec per key costs
+    ~100-300 ms; a line on an open pipe reaches the game in a few ms."""
+    def __init__(self,docker_api,name):
+        # Each line is a shell-quoted argument list (shlex.quote), so eval only ever runs xdotool.
+        exec_id=docker_api.api.exec_create(name,['sh','-c','while IFS= read -r l; do eval "xdotool $l"; done'],
+                                           stdin=True,environment={'DISPLAY':':99'})['Id']
+        self.sock=docker_api.api.exec_start(exec_id,socket=True)._sock
+
+    def send(self,t,cmd):
+        args=xdotool_args(t,cmd)
+        if args: self.sock.sendall((' '.join(shlex.quote(a.replace('\n',' ')) for a in args)+'\n').encode())
+
+    def close(self):
+        try: self.sock.close()
+        except Exception: pass
+
 class Streamer:
     """Live MJPEG from ffmpeg x11grab inside the tab's container, relayed to the API over a WebSocket.
     Runs only while someone is watching; input arriving on the same socket is applied immediately."""
@@ -136,10 +153,10 @@ class Streamer:
         # Bigger screens get lighter JPEG compression work so the 0.5 vCPU tab keeps its frame rate.
         quality='4' if w*h<=240*320 else '7'
         # PID file lets stop() kill ffmpeg: closing the exec stream alone leaves it running.
-        # mpdecimate drops frames identical to the previous one (static menus, idle farming) before encoding,
-        # but keeps at least one per second; -vsync vfr stops ffmpeg re-inserting the dropped frames.
-        return ['sh','-c','echo $$ > "$0"; exec ffmpeg -loglevel error -f x11grab -draw_mouse 0 -framerate "$1" -video_size "$2" -i "$3" '
-                '-vf "mpdecimate=max=$1" -vsync vfr -f mjpeg -q:v "$4" -',
+        # Constant frame rate while someone watches (nobody watching = no capture at all). -fflags nobuffer and
+        # -flush_packets 1 push each JPEG out as soon as it is encoded instead of batching in ffmpeg's buffers.
+        return ['sh','-c','echo $$ > "$0"; exec ffmpeg -loglevel error -fflags nobuffer -f x11grab -draw_mouse 0 -framerate "$1" '
+                '-video_size "$2" -i "$3" -f mjpeg -q:v "$4" -flush_packets 1 -',
                 self.pidfile,str(self.fps),size,origin,quality]
 
     def kill_ffmpeg(self,container):
@@ -159,7 +176,7 @@ class Streamer:
                 with connect(WS_API+'/api/internal/stream/'+self.t['id'],additional_headers={'Authorization':'Bearer '+TOKEN},max_size=2**20,open_timeout=5) as ws:
                     container=self.container=docker_api.containers.get(name)
                     logging.info('Stream %s: %s fps',self.t['id'][:8],self.fps)
-                    threading.Thread(target=self.inputs,args=(ws,container),daemon=True).start()
+                    threading.Thread(target=self.inputs,args=(ws,container,docker_api,name),daemon=True).start()
                     exec_id=docker_api.api.exec_create(name,self.ffmpeg(),environment={'DISPLAY':':99'})['Id']
                     buf=b''
                     for out,_ in docker_api.api.exec_start(exec_id,stream=True,demux=True):
@@ -179,13 +196,24 @@ class Streamer:
             self.stop.wait(2)
         docker_api.close()
 
-    def inputs(self,ws,container):
+    def inputs(self,ws,container,docker_api,name):
+        try: pipe=InputPipe(docker_api,name)
+        except Exception: pipe=None
         try:
             for raw in ws:
                 if isinstance(raw,str):
-                    try: send_input(container,self.t,json.loads(raw))
-                    except Exception: pass
+                    cmd=json.loads(raw)
+                    try:
+                        if pipe: pipe.send(self.t,cmd)
+                        else: send_input(container,self.t,cmd)
+                    except Exception:
+                        # Pipe broke (tab restarted): this key goes the slow way, the next ones through a new pipe.
+                        if pipe: pipe.close()
+                        try: send_input(container,self.t,cmd);pipe=InputPipe(docker_api,name)
+                        except Exception: pipe=None
         except Exception: pass
+        finally:
+            if pipe: pipe.close()
 
 streamers={}
 SETTLE_SECONDS=6

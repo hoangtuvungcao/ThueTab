@@ -130,16 +130,6 @@ export default function Viewer({ tab }) {
   const lastErr = useRef(0);
   const kind = info.kind || tabKind(tab, admin?.jars || jars, config);
   const streaming = info.hasFrame && info.phase === 'live';
-  // Identical frames are dropped server-side, so a still screen arrives at ~1 fps: show "Màn hình tĩnh" instead of a
-  // scary low number once the rate stays under 3 for 2 s. Only a socket close means disconnected.
-  const lowSince = useRef(0);
-  const [still2, setStill2] = useState(false);
-  useEffect(() => {
-    if (!streaming || info.fps >= 3) { lowSince.current = 0; setStill2(false); return; }
-    if (!lowSince.current) lowSince.current = Date.now();
-    const t = setTimeout(() => setStill2(true), Math.max(0, 2000 - (Date.now() - lowSince.current)));
-    return () => clearTimeout(t);
-  }, [info.fps, streaming]);
   const j2me = kind === 'midp';
   const screenId = tab.screen || '240x320';
 
@@ -264,7 +254,7 @@ export default function Viewer({ tab }) {
               <StateBadge state={state} /><KindBadge kind={kind} />
               {j2me && <span className="badge num" style={{ '--c': 'var(--muted)' }}>{screenId.replace('x', '×')}</span>}
               <span className={'live' + (streaming && !pending ? ' on' : '')} role="status">{status}</span>
-              {live && prefs.show_fps !== false && <span className="stream-meter num" title="FPS nhận được / độ trễ từ lúc bấm phím đến khung hình kế tiếp">{still2 ? <b>Màn hình tĩnh</b> : <><b>{info.fps}</b> FPS</>} · <b>{info.ping || '—'}</b> ms</span>}
+              {live && prefs.show_fps !== false && <span className="stream-meter num" title="FPS nhận được / độ trễ từ lúc bấm phím đến khung hình kế tiếp"><b>{info.fps}</b> FPS · <b>{info.ping || '—'}</b> ms</span>}
             </div>
           </div>
           <div className="v-head-actions">
