@@ -879,15 +879,21 @@ async def sepay(req:Request):
     except Exception: raise HTTPException(400,'Invalid JSON')
     if not isinstance(b,dict): raise HTTPException(422,'Invalid payload')
     if b.get('transferType')!='in': return {'success':True,'ignored':True}
-    if b.get('accountNumber')!=os.getenv('BANK_ACCOUNT') or b.get('gateway')!=os.getenv('BANK_NAME'): raise HTTPException(422,'Bank account mismatch')
+    # Anything we can't credit is acknowledged (2xx) so SePay doesn't retry it 7 times, and recorded in the audit
+    # log for an admin to reconcile by hand (Quản trị → Đơn nạp → Xác nhận tay).
+    def skip(reason):
+        with tx() as s: audit(s,'sepay','payment.unmatched',f"{reason} id={b.get('id')} {b.get('transferAmount')}đ {str(b.get('content',''))[:40]}"[:80])
+        return {'success':True,'matched':False,'reason':reason}
+    if b.get('accountNumber')!=os.getenv('BANK_ACCOUNT') or b.get('gateway')!=os.getenv('BANK_NAME'):
+        return skip(f"tk {b.get('gateway')}/{str(b.get('accountNumber'))[-4:]}")
     amount=b.get('transferAmount')
-    if isinstance(amount,bool) or not isinstance(amount,(int,float)) or not float(amount).is_integer() or not 0<amount<=5000000: raise HTTPException(422,'Invalid amount')
+    if isinstance(amount,bool) or not isinstance(amount,(int,float)) or not float(amount).is_integer() or not 0<amount<=5000000: return skip('số tiền')
     transaction=str(b.get('id',''));reference=b.get('referenceCode')
-    if not transaction.isdigit() or not isinstance(reference,str) or not 1<=len(reference)<=100: raise HTTPException(422,'Missing transaction identifier')
+    if not transaction.isdigit() or not isinstance(reference,str) or not 1<=len(reference)<=100: return skip('thiếu mã GD')
     result=credit(transaction,reference,int(amount),str(b.get('content','')),b.get('code'),'sepay')
-    if result=='unmatched': raise HTTPException(422,'Unmatched payment; manual reconciliation required')
+    if result=='unmatched': return skip('không khớp đơn')
     if result=='conflict': raise HTTPException(409,'Payment conflict; manual reconciliation required')
-    return {'success':True,'duplicate':result=='duplicate'}
+    return {'success':True,'matched':True,'duplicate':result=='duplicate'}
 
 def credit(transaction,reference,amount,content,code,source):
     """Credit one bank transfer to its order exactly once. Returns credited|duplicate|unmatched|conflict."""

@@ -65,8 +65,12 @@ def test_sepay_duplicate_and_amount_validation():
     b={'id':1234,'accountNumber':'123456789','gateway':'Vietcombank','referenceCode':'FT001','transferType':'in','transferAmount':50000,'content':order['code']}
     webhook=TestClient(app);headers={'Authorization':'Apikey '+os.environ['SEPAY_API_KEY']}
     assert webhook.post('/api/payments/sepay',json=b).status_code==401
-    assert webhook.post('/api/payments/sepay',headers=headers,json={**b,'transferAmount':49000}).status_code==422
-    assert webhook.post('/api/payments/sepay',headers=headers,json={**b,'accountNumber':'wrong'}).status_code==422
+    # Not creditable: acknowledged so SePay doesn't retry, nothing credited, logged for manual reconciliation.
+    r=webhook.post('/api/payments/sepay',headers=headers,json={**b,'transferAmount':49000})
+    assert r.status_code==200 and r.json()['matched'] is False
+    assert webhook.post('/api/payments/sepay',headers=headers,json={**b,'accountNumber':'wrong'}).json()['matched'] is False
+    assert c.get('/api/me').json()['balance']==100000
+    assert any(x['action']=='payment.unmatched' for x in client('admin@test.vn').get('/api/admin/audit?q=unmatched').json()['items'])
     with ThreadPoolExecutor(max_workers=6) as pool:
         replies=list(pool.map(lambda _:webhook.post('/api/payments/sepay',headers=headers,json=b),range(6)))
     assert all(r.status_code==200 for r in replies)
