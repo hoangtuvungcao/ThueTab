@@ -19,6 +19,7 @@ window/handheld/orientation=6
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 ''')
 presets=[]
 # File names match what /api/config "downloads" detects in data/downloads/ (by extension). iOS uses the web app (PWA).
