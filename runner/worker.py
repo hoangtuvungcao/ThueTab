@@ -13,6 +13,8 @@ WORKER=os.getenv('WORKER_ID','local-1')
 # CPU cap per tab (a ceiling, not a reservation: idle tabs leave their share to busy ones). The emulator and the
 # video encoder share it, so below ~1 CPU both stutter while someone is watching.
 TAB_NANO_CPUS=int(float(os.getenv('TAB_CPUS','1'))*1e9)
+# Live video bitrate cap (kbit/s) per watched tab. ~600 fits a home uplink of ~1 Mbit/s with headroom.
+STREAM_KBPS=max(150,int(os.getenv('STREAM_KBPS','600')))
 client=docker.from_env(timeout=8)
 http=httpx.Client(base_url=API,headers={'Authorization':'Bearer '+TOKEN},timeout=8)
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
@@ -141,11 +143,13 @@ class InputPipe:
         try: self.sock.close()
         except Exception: pass
 
+AUD=b'\x00\x00\x00\x01\x09'  # H.264 access unit delimiter NAL
+
 class Streamer:
     """Live MJPEG from ffmpeg x11grab inside the tab's container, relayed to the API over a WebSocket.
     Runs only while someone is watching; input arriving on the same socket is applied immediately."""
-    def __init__(self,t,fps):
-        self.t=t;self.fps=fps;self.stop=threading.Event();self.container=None
+    def __init__(self,t,fps,codec='mjpeg'):
+        self.t=t;self.fps=fps;self.codec=codec;self.stop=threading.Event();self.container=None
         self.pidfile=f'/tmp/stream-{os.urandom(4).hex()}.pid'
         threading.Thread(target=self.run,daemon=True,name='stream-'+t['id']).start()
 
@@ -153,14 +157,22 @@ class Streamer:
         midp=self.t.get('kind')=='midp'
         size,origin=(screen(self.t),f':99.0+{SCREEN_ORIGIN[0]},{SCREEN_ORIGIN[1]}') if midp else ('640x480',':99.0')
         w,h=map(int,size.split('x'))
-        # Bigger screens get lighter JPEG compression work so the 0.5 vCPU tab keeps its frame rate.
+        # PID file lets stop() kill ffmpeg: closing the exec stream alone leaves it running. Constant frame rate
+        # while someone watches (nobody watching = no capture); -flush_packets 1 sends each frame as soon as it's encoded.
+        grab=('echo $$ > "$0"; exec ffmpeg -loglevel error -fflags nobuffer -f x11grab -draw_mouse 0 -framerate "$1" '
+              '-video_size "$2" -i "$3" ')
+        if self.codec=='h264':
+            # H.264 sends only what changed between frames: ~10x less data than JPEG, so 30/60 fps fits a slow uplink.
+            # Baseline + zerolatency: no B-frames or lookahead (no added delay), decodable by every browser.
+            # One keyframe per second lets a viewer that fell behind resynchronise quickly; aud=1 marks frame
+            # boundaries so the stream can be cut into frames below.
+            kbps=STREAM_KBPS
+            return ['sh','-c',grab+'-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline -pix_fmt yuv420p '
+                    '-g "$1" -crf 26 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
+                    self.pidfile,str(self.fps),size,origin,str(kbps),str(kbps//2)]
+        # JPEG (thumbnails, native app): bigger screens get lighter compression so the tab keeps its frame rate.
         quality='4' if w*h<=240*320 else '7'
-        # PID file lets stop() kill ffmpeg: closing the exec stream alone leaves it running.
-        # Constant frame rate while someone watches (nobody watching = no capture at all). -fflags nobuffer and
-        # -flush_packets 1 push each JPEG out as soon as it is encoded instead of batching in ffmpeg's buffers.
-        return ['sh','-c','echo $$ > "$0"; exec ffmpeg -loglevel error -fflags nobuffer -f x11grab -draw_mouse 0 -framerate "$1" '
-                '-video_size "$2" -i "$3" -f mjpeg -q:v "$4" -flush_packets 1 -',
-                self.pidfile,str(self.fps),size,origin,quality]
+        return ['sh','-c',grab+'-f mjpeg -q:v "$4" -flush_packets 1 -',self.pidfile,str(self.fps),size,origin,quality]
 
     def kill_ffmpeg(self,container):
         try: container.exec_run(['sh','-c','[ -f "$0" ] && kill "$(cat "$0")"; rm -f "$0"',self.pidfile])
@@ -178,7 +190,7 @@ class Streamer:
             try:
                 with connect(WS_API+'/api/internal/stream/'+self.t['id'],additional_headers={'Authorization':'Bearer '+TOKEN},max_size=2**20,open_timeout=5) as ws:
                     container=self.container=docker_api.containers.get(name)
-                    logging.info('Stream %s: %s fps',self.t['id'][:8],self.fps)
+                    logging.info('Stream %s: %s fps %s',self.t['id'][:8],self.fps,self.codec)
                     threading.Thread(target=self.inputs,args=(ws,container,docker_api,name),daemon=True).start()
                     exec_id=docker_api.api.exec_create(name,self.ffmpeg(),environment={'DISPLAY':':99'})['Id']
                     buf=b''
@@ -186,12 +198,20 @@ class Streamer:
                         if self.stop.is_set(): break
                         if not out: continue
                         buf+=out
-                        # Split the MJPEG byte stream on JPEG start/end markers.
-                        while True:
-                            start=buf.find(b'\xff\xd8')
-                            end=buf.find(b'\xff\xd9',start+2) if start>=0 else -1
-                            if end<0: break
-                            ws.send(buf[start:end+2]);buf=buf[end+2:]
+                        if self.codec=='h264':
+                            # Each frame starts with an access unit delimiter; a frame is complete when the next begins.
+                            while True:
+                                start=buf.find(AUD)
+                                end=buf.find(AUD,start+5) if start>=0 else -1
+                                if end<0: break
+                                ws.send(buf[start:end]);buf=buf[end:]
+                        else:
+                            # Split the MJPEG byte stream on JPEG start/end markers.
+                            while True:
+                                start=buf.find(b'\xff\xd8')
+                                end=buf.find(b'\xff\xd9',start+2) if start>=0 else -1
+                                if end<0: break
+                                ws.send(buf[start:end+2]);buf=buf[end+2:]
                         if len(buf)>2_000_000: buf=b''
             except Exception as e:
                 if not self.stop.is_set(): logging.info('Stream %s restarting: %s',self.t['id'][:8],type(e).__name__)
@@ -220,12 +240,13 @@ class Streamer:
 
 streamers={}
 SETTLE_SECONDS=6
-def sync_streams(watch,desired):
+def sync_streams(watch,desired,video=()):
+    codec=lambda id:'h264' if id in video else 'mjpeg'
     for id,s in list(streamers.items()):
-        if id not in watch or id not in desired or s.fps!=watch[id] or revision(s.t)!=revision(desired[id]):
+        if id not in watch or id not in desired or s.fps!=watch[id] or s.codec!=codec(id) or revision(s.t)!=revision(desired[id]):
             s.close();del streamers[id]
     for id,fps in watch.items():
-        if id in desired and id not in streamers: streamers[id]=Streamer(desired[id],fps)
+        if id in desired and id not in streamers: streamers[id]=Streamer(desired[id],fps,codec(id))
 
 def main():
     last_ok=0; lease=15; statuses={}; retry_at={}; log_at={}; started_at={}; memory=0
@@ -260,7 +281,7 @@ def main():
                         http.put('/api/internal/logs/'+id,content=c.logs(tail=80,stdout=True,stderr=True)[-16000:],headers={'Content-Type':'text/plain'})
             running={k:v for k,v in desired.items() if existing.get(k) and existing[k].status=='running' and existing[k].labels.get('thuetab.rev')==revision(v)
                      and tick-started_at.get(k,-99)>SETTLE_SECONDS}
-            sync_streams(payload.get('watch',{}),running)
+            sync_streams(payload.get('watch',{}),running,set(payload.get('video',[])))
             for cmd in payload['commands']:
                 if cmd['tab_id'] in desired: send_input(client.containers.get('thuetab-'+cmd['tab_id']),desired[cmd['tab_id']],cmd)
             # Expired frame files are cleaned by API maintenance, not trusted game containers.

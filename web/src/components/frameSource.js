@@ -16,6 +16,21 @@ export const CLOSE_MESSAGES = {
 };
 const FATAL = new Set([4401, 4403, 4404]); // retrying cannot help
 
+// Live view as H.264 video (only changes between frames travel: ~10x lighter than JPEG, so 30/60 fps fits a slow
+// server uplink). Needs WebCodecs; otherwise the server sends JPEG frames.
+const AVC = 'avc1.42E01F'; // constrained baseline, what the worker encodes
+const videoSupport = typeof VideoDecoder === 'undefined' ? Promise.resolve(false)
+  : VideoDecoder.isConfigSupported({ codec: AVC, optimizeForLatency: true }).then(r => !!r.supported, () => false);
+let videoBroken = false; // a decoder failed in this page: stay on JPEG
+
+// Keyframe = the access unit carries an SPS (7) or an IDR slice (5).
+function isKey(b) {
+  for (let i = 0; i + 3 < b.length; i++) {
+    if (b[i] === 0 && b[i + 1] === 0 && b[i + 2] === 1) { const t = b[i + 3] & 0x1f; if (t === 5 || t === 7) return true; i += 2; }
+  }
+  return false;
+}
+
 /**
  * Live stream of one tab.
  * Returns { canvasRef, info: {phase, message, width, height, kind, fps, ping, hasFrame}, input }.
@@ -31,7 +46,7 @@ export function useTabStream(tabId, { fps, enabled, share }) {
 
   useEffect(() => {
     if (!enabled) { patch({ phase: 'idle', fps: 0 }); return; }
-    let alive = true, retry = 0, retryTimer, raf = 0, decoding = false, latest = null;
+    let alive = true, retry = 0, retryTimer, raf = 0, decoding = false, latest = null, decoder = null, haveKey = false, vts = 0;
     // FPS = frames received in a rolling 1 s window, refreshed every 500 ms.
     let stamps = [], lastPing = 0, hasFrame = false;
     const meter = setInterval(() => {
@@ -39,6 +54,34 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       stamps = stamps.filter(x => t - x <= 1000);
       patch({ fps: stamps.length, ping: lastPing });
     }, 500);
+
+    const paint = (img, w, h) => {
+      const c = canvasRef.current;
+      if (!c || !alive) return;
+      const resized = c.width !== w || c.height !== h;
+      if (resized) { c.width = w; c.height = h; }
+      c.getContext('2d').drawImage(img, 0, 0);
+      // The frame size can change without a new hello (screen rotation): track it from the frames themselves.
+      if (!hasFrame || resized) { hasFrame = true; patch({ hasFrame: true, phase: 'live', width: w, height: h }); }
+    };
+
+    const closeDecoder = () => { if (decoder && decoder.state !== 'closed') decoder.close(); decoder = null; haveKey = false; };
+    const video = bytes => {
+      if (!decoder) {
+        decoder = new VideoDecoder({
+          output: f => { paint(f, f.displayWidth, f.displayHeight); f.close(); },
+          // Undecodable stream: fall back to JPEG for the rest of this page's life.
+          error: () => { videoBroken = true; closeDecoder(); wsRef.current?.close(4000); }
+        });
+        decoder.configure({ codec: AVC, optimizeForLatency: true });
+      }
+      const key = isKey(bytes);
+      if (!haveKey && !key) return; // join at a keyframe
+      haveKey = true;
+      vts += 33333;
+      try { decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: vts, data: bytes })); }
+      catch { closeDecoder(); }
+    };
 
     const draw = async () => {
       raf = 0;
@@ -48,26 +91,21 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       decoding = true;
       try {
         const bmp = await createImageBitmap(blob);
-        const c = canvasRef.current;
-        if (c && alive) {
-          const resized = c.width !== bmp.width || c.height !== bmp.height;
-          if (resized) { c.width = bmp.width; c.height = bmp.height; }
-          c.getContext('2d').drawImage(bmp, 0, 0);
-          // The frame size can change without a new hello (screen rotation): track it from the frames themselves.
-          if (!hasFrame || resized) { hasFrame = true; patch({ hasFrame: true, phase: 'live', width: bmp.width, height: bmp.height }); }
-        }
+        paint(bmp, bmp.width, bmp.height);
         bmp.close?.();
       } catch { /* corrupt frame: skip */ }
       decoding = false;
       if (latest && alive && !raf) raf = requestAnimationFrame(draw);
     };
 
-    const connect = () => {
+    const connect = async () => {
+      const h264 = !videoBroken && await videoSupport;
       if (!alive) return;
+      closeDecoder();
       patch({ phase: hasFrame ? 'reconnecting' : 'connecting' });
       // Share links authenticate with ?share=; signed-in viewers in token mode send ['bearer', token] as subprotocols.
-      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
-      ws.binaryType = 'blob';
+      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}${h264 ? '&codec=h264' : ''}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
+      ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
       ws.onmessage = e => {
         if (typeof e.data === 'string') {
@@ -79,8 +117,11 @@ export function useTabStream(tabId, { fps, enabled, share }) {
         }
         stamps.push(performance.now());
         if (pingStart.current) { lastPing = Math.round(performance.now() - pingStart.current); pingStart.current = 0; }
-        latest = e.data;
-        if (!raf) raf = requestAnimationFrame(draw);
+        const bytes = new Uint8Array(e.data);
+        if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+          latest = new Blob([bytes], { type: 'image/jpeg' });
+          if (!raf) raf = requestAnimationFrame(draw);
+        } else video(bytes);
       };
       ws.onclose = e => {
         if (wsRef.current === ws) wsRef.current = null;
@@ -99,6 +140,7 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       clearInterval(meter);
       clearTimeout(retryTimer);
       cancelAnimationFrame(raf);
+      closeDecoder();
       const ws = wsRef.current;
       wsRef.current = null;
       ws?.close(1000);

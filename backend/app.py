@@ -729,7 +729,7 @@ async def stream_view(ws:WebSocket,id:str):
     if err: await ws.close(code=err); return
     try: fps=int(ws.query_params.get('fps','30'))
     except ValueError: fps=30
-    viewer=Viewer(ws,fps if fps in FPS_CHOICES else 30)
+    viewer=Viewer(ws,fps if fps in FPS_CHOICES else 30,'h264' if ws.query_params.get('codec')=='h264' else 'mjpeg')
     if not hub.add_viewer(id,viewer): await ws.close(code=4429); return
     kind,screen=info[0],info[1]
     w,h=map(int,screen.split('x'))
@@ -781,7 +781,8 @@ async def stream_worker(ws:WebSocket,id:str):
     try:
         while True:
             frame=await ws.receive_bytes()
-            if len(frame)<=400000 and frame.startswith(b'\xff\xd8'): hub.publish(id,frame)
+            # JPEG frames, or H.264 access units (Annex B, start code first).
+            if len(frame)<=400000 and frame[:3] in (b'\xff\xd8\xff',b'\x00\x00\x00',b'\x00\x00\x01'): hub.publish(id,frame)
     except (WebSocketDisconnect,RuntimeError,KeyError): pass
     finally:
         if hub.workers.get(id) is ws: hub.workers.pop(id,None)
@@ -1329,7 +1330,7 @@ def heartbeat(b:Report):
             j=jars.get(t.custom_jar_id)
             return {**internal_tab(t),'kind':j.kind if j else next((g.get('runtime','jar') for g in CATALOG if g['id']==t.game),'jar'),'midlet':j.midlet if j else ''}
         watch=hub.watch()
-        return {'tabs':[runtime(t) for t in live], 'commands':commands, 'lease_seconds':15, 'watch':{k:v for k,v in watch.items() if k in ids},
+        return {'tabs':[runtime(t) for t in live], 'commands':commands, 'lease_seconds':15, 'watch':{k:v for k,v in watch.items() if k in ids},'video':[k for k in hub.video() if k in ids],
                 'logs':[k for k in hub.logs_wanted() if k in ids]}
 @app.put('/api/internal/frames/{id}',dependencies=[Depends(worker_auth)])
 async def put_frame(id:str,req:Request):

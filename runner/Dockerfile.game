@@ -12,22 +12,21 @@ RUN jlink --add-modules java.base,java.desktop,java.logging,java.xml,java.naming
       --strip-debug --no-man-pages --no-header-files --compress=zip-6 --generate-cds-archive --output /jre
 # 1x1 black PNG: placeholder skin image required by the device definition.
 RUN printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00\x00\x00:~\x9bU\x00\x00\x00\nIDATx\x9cc`\x00\x00\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82' > /emu/normal.png
-# Minimal FFmpeg (GPL build, like the distro package, because mpdecimate is GPL): only X11 screen grab -> MJPEG/PNG
-# plus the duplicate-frame filter (a few MB instead of the
-# distro package's hundreds of MB of codecs).
+# Minimal FFmpeg (GPL build because of libx264): only X11 screen grab -> H.264 (live view, ~10x lighter than JPEG on
+# slow uplinks) or MJPEG/PNG (thumbnails, older clients) — a few MB instead of the distro package's hundreds of MB.
 FROM ubuntu:22.04 AS ffmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config xz-utils zlib1g-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config xz-utils zlib1g-dev libx264-dev \
       libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev
 ADD --checksum=sha256:3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38 https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz /src/ffmpeg.tar.xz
 RUN cd /src && tar xf ffmpeg.tar.xz && cd ffmpeg-6.1.2 && ./configure --prefix=/ffmpeg --disable-everything --disable-doc \
       --enable-gpl --disable-debug --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect --disable-x86asm --enable-small \
-      --enable-zlib --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
-      --enable-indev=xcbgrab --enable-decoder=rawvideo --enable-encoder=mjpeg,png --enable-muxer=mjpeg,image2,image2pipe \
+      --enable-zlib --enable-libx264 --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
+      --enable-indev=xcbgrab --enable-decoder=rawvideo --enable-encoder=libx264,mjpeg,png --enable-muxer=h264,mjpeg,image2,image2pipe \
       --enable-protocol=pipe,file --enable-filter=mpdecimate,scale,format,null,fps,buffer,buffersink \
     && make -j"$(nproc)" && make install && strip /ffmpeg/bin/ffmpeg
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y --no-install-recommends xvfb xdotool fonts-dejavu-core libxrender1 libxtst6 libxi6 libfreetype6 fontconfig \
-      libxcb1 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 \
+      libxcb1 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 libx264-163 \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale && useradd -m -u 10001 game
 COPY --from=build /jre /opt/jre
 COPY --from=ffmpeg /ffmpeg/bin/ffmpeg /usr/local/bin/ffmpeg
