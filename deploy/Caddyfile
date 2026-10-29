@@ -1,0 +1,8 @@
+# HTTPS reverse proxy. Replace thuetab.example.vn with your domain; Caddy obtains the certificate itself.
+# WebSocket streaming (/api/tabs/*/stream) passes through reverse_proxy without extra settings.
+thuetab.example.vn {
+	encode zstd gzip
+	@internal path /api/internal/*
+	respond @internal 404
+	reverse_proxy 127.0.0.1:8000
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=ThuêTab game worker
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+WorkingDirectory=/opt/thuetab
+EnvironmentFile=/opt/thuetab/.env
+Environment=API_URL=http://127.0.0.1:8000
+ExecStart=/opt/thuetab/.venv/bin/python -m runner.worker
+Restart=always
+RestartSec=3
+User=thuetab
+Group=docker
+
+[Install]
+WantedBy=multi-user.target

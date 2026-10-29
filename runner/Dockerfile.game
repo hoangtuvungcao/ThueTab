@@ -1,0 +1,40 @@
+FROM eclipse-temurin:21-jdk-jammy AS build
+WORKDIR /src
+COPY runner/demo/Garden.java .
+RUN javac Garden.java && jar --create --file garden.jar --main-class Garden *.class
+# MicroEmulator (LGPL) runs J2ME MIDlet .jar files; checksums pinned so a changed upstream file fails the build.
+ADD --checksum=sha256:dbd5f3eb8365d3e839d6a203149e0e3776fc1a0585e16ac1fc23f76c9fcae1c6 https://repo1.maven.org/maven2/org/microemu/microemulator/2.0.4/microemulator-2.0.4.jar /emu/microemulator.jar
+ADD --checksum=sha256:f2ed0f8526a5788091d1fd97d4e474c2ff777a1d94fade8f8396c9e5931ea9a8 https://repo1.maven.org/maven2/org/microemu/microemu-nokiaui/2.0.4/microemu-nokiaui-2.0.4.jar /emu/nokiaui.jar
+ADD --checksum=sha256:9de8726d16d559da98bd36b30e83c992ced946200e80d93a9f4c61f71ceda6af https://repo1.maven.org/maven2/org/microemu/microemu-jsr-135/2.0.4/microemu-jsr-135-2.0.4.jar /emu/jsr135.jar
+# Trimmed Java runtime: only the modules the emulator and games use (~half the size of a full JRE).
+RUN jlink --add-modules java.base,java.desktop,java.logging,java.xml,java.naming,java.prefs,java.management,jdk.unsupported,jdk.crypto.ec,jdk.zipfs \
+      --strip-debug --no-man-pages --no-header-files --compress=zip-6 --generate-cds-archive --output /jre
+# 1x1 black PNG: placeholder skin image required by the device definition.
+RUN printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00\x00\x00:~\x9bU\x00\x00\x00\nIDATx\x9cc`\x00\x00\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82' > /emu/normal.png
+# Minimal FFmpeg (GPL build, like the distro package, because mpdecimate is GPL): only X11 screen grab -> MJPEG/PNG
+# plus the duplicate-frame filter (a few MB instead of the
+# distro package's hundreds of MB of codecs).
+FROM ubuntu:22.04 AS ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config xz-utils zlib1g-dev \
+      libxcb1-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev
+ADD --checksum=sha256:3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38 https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz /src/ffmpeg.tar.xz
+RUN cd /src && tar xf ffmpeg.tar.xz && cd ffmpeg-6.1.2 && ./configure --prefix=/ffmpeg --disable-everything --disable-doc \
+      --enable-gpl --disable-debug --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect --disable-x86asm --enable-small \
+      --enable-zlib --enable-libxcb --enable-libxcb-shm --enable-libxcb-xfixes --enable-libxcb-shape \
+      --enable-indev=xcbgrab --enable-decoder=rawvideo --enable-encoder=mjpeg,png --enable-muxer=mjpeg,image2,image2pipe \
+      --enable-protocol=pipe,file --enable-filter=mpdecimate,scale,format,null,fps,buffer,buffersink \
+    && make -j"$(nproc)" && make install && strip /ffmpeg/bin/ffmpeg
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb xdotool fonts-dejavu-core libxrender1 libxtst6 libxi6 libfreetype6 fontconfig \
+      libxcb1 libxcb-shm0 libxcb-xfixes0 libxcb-shape0 \
+    && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale && useradd -m -u 10001 game
+COPY --from=build /jre /opt/jre
+COPY --from=ffmpeg /ffmpeg/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=build /src/garden.jar /opt/game/game.jar
+COPY --from=build /emu/ /opt/emu/
+COPY runner/start-game.sh /opt/game/start.sh
+COPY runner/device-template.xml /opt/emu/device-template.xml
+RUN chmod 755 /opt/game/start.sh && chmod 644 /opt/emu/*
+USER 10001:10001
+ENV DISPLAY=:99 HOME=/tmp/home PATH=/opt/jre/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENTRYPOINT ["/opt/game/start.sh"]

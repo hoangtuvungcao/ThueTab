@@ -1,0 +1,22 @@
+.godot/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+!.env.example
+data/
+web/node_modules/
+web/dist/
+exports/
+.staging/
+*.log
+# Screenshots from QA runs, local tool state
+docs/*.png
+docs/*.import
+docs/components/
+godot/
+.antigravitycli/
+web/.tmp-*
+web/.dbg*

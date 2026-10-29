@@ -1,0 +1,113 @@
+[
+  {
+    "id": "java-demo",
+    "name": "Java Garden (Demo Test)",
+    "kind": "Java PC",
+    "description": "Game nông trại Java demo tích hợp sẵn để kiểm tra độ mượt, phản hồi phím và treo máy 24/24. Không cần tài khoản game.",
+    "enabled": false,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "icon": "jar",
+    "runtime": "jar"
+  },
+  {
+    "id": "nso-java",
+    "name": "Ninja School Online (NSO)",
+    "kind": "J2ME MicroEmulator",
+    "description": "Treo up level, làm nhiệm vụ, auto đánh quái 24/24 trên bản Java MicroEmulator tối ưu hóa siêu nhẹ, chống disconnect.",
+    "enabled": false,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "server_ports": [
+      53,
+      80,
+      443,
+      14444,
+      19128,
+      19129
+    ],
+    "icon": "jar",
+    "runtime": "midp"
+  },
+  {
+    "id": "avatar-java",
+    "name": "Avatar Nông Trại",
+    "kind": "J2ME MicroEmulator",
+    "description": "Auto nông trại, câu cá, chăm sóc cây trồng 24/24 không bao giờ tắt máy.",
+    "enabled": false,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "server_ports": [
+      53,
+      80,
+      443,
+      14444,
+      19128,
+      19129
+    ],
+    "icon": "jar",
+    "runtime": "midp"
+  },
+  {
+    "id": "knight-java",
+    "name": "Hiệp Sĩ Online (Knight Age)",
+    "kind": "J2ME MicroEmulator",
+    "description": "Treo phó bản, săn boss, auto lượm đồ mượt mà không lo nóng máy hao pin.",
+    "enabled": false,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "server_ports": [
+      53,
+      80,
+      443,
+      19128,
+      19129,
+      20128
+    ],
+    "icon": "jar",
+    "runtime": "midp"
+  },
+  {
+    "id": "dragonboy-java",
+    "name": "Chú Bé Rồng (Ngọc Rồng Online)",
+    "kind": "J2ME MicroEmulator",
+    "description": "Treo đệ tử, up sức mạnh, auto đậu thần 24/24.",
+    "enabled": false,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "server_ports": [
+      53,
+      80,
+      443,
+      14444,
+      14445,
+      14446
+    ],
+    "icon": "jar",
+    "runtime": "midp"
+  },
+  {
+    "id": "custom-jar",
+    "name": "Game của bạn (.jar)",
+    "kind": "J2ME / Java PC",
+    "description": "Tải lên file .jar game J2ME hoặc Java PC và chạy 24/24.",
+    "enabled": true,
+    "image": "thuetab-java:local",
+    "network": "thuetab-game-net",
+    "online": true,
+    "server_ports": [
+      53,
+      80,
+      443,
+      10000,
+      35000
+    ],
+    "icon": "jar",
+    "runtime": "midp"
+  }
+]

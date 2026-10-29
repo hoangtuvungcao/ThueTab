@@ -1,0 +1,12 @@
+.git
+.godot
+.venv
+web/node_modules
+web/dist
+data
+exports
+.staging
+addons
+docs/*.png
+.env
+.env.*
