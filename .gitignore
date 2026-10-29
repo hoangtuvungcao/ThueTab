@@ -20,3 +20,4 @@ godot/
 .antigravitycli/
 web/.tmp-*
 web/.dbg*
+web/dist-*

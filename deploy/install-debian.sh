@@ -2,7 +2,7 @@
 # One-shot install of ThuêTab on a Debian 12/13 machine (VM or VPS) that already has Docker.
 # Lightweight setup for small machines: SQLite instead of PostgreSQL, zram swap, capacity sized from RAM/CPU.
 #
-#   sudo bash deploy/install-debian.sh --origin https://thuetab.hidev.dev --listen 0.0.0.0 --port 8080 \
+#   sudo bash deploy/install-debian.sh --origin https://thuetab.pages.dev --listen 0.0.0.0 --port 8080 \
 #        [--cf-token <Cloudflare Tunnel token>] [--capacity N]
 #
 # --origin   the web front-end URL(s) users open (comma-separated); cookies/WebSockets are only accepted from them.
@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
     *) echo "Tham số không hợp lệ: $1" >&2; exit 1 ;;
   esac
 done
-[ -n "$ORIGIN" ] || { echo "Thiếu --origin (ví dụ --origin https://thuetab.hidev.dev)" >&2; exit 1; }
+[ -n "$ORIGIN" ] || { echo "Thiếu --origin: domain giao diện web (ví dụ --origin https://thuetab.pages.dev)" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || { echo "Hãy chạy bằng root: sudo bash $0 ..." >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "Chưa có Docker hoặc Docker chưa chạy." >&2; exit 1; }
 

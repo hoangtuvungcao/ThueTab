@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { api, syncClock, ApiError } from './api.js';
+import { api, syncClock, ApiError, clearToken } from './api.js';
 import { POLL, loadTheme, setTheme, resolveTheme, applyPrefs } from './tokens.js';
 import { usePoll, useRoute } from './hooks.js';
 import { AppCtx } from './store.js';
@@ -10,7 +10,7 @@ import Landing from './pages/Landing.jsx';
 import AuthDialog from './pages/Auth.jsx';
 import Tabs from './pages/Tabs.jsx';
 import Jars from './pages/Jars.jsx';
-import WalletPage from './pages/Wallet.jsx';
+const WalletPage = lazy(() => import('./pages/Wallet.jsx'));
 const Plans = lazy(() => import('./pages/Plans.jsx'));
 const Help = lazy(() => import('./pages/Help.jsx'));
 // Heavier, less-visited pages load on demand to keep the main bundle lean.
@@ -121,6 +121,7 @@ function Root() {
 
   const logout = async () => {
     await api('/auth/logout', 'POST').catch(() => {});
+    clearToken();
     signedOut();
     go('');
     toast('Đã đăng xuất.');
@@ -128,6 +129,7 @@ function Root() {
 
   const logoutAll = async () => {
     try { await api('/auth/logout-all', 'POST'); } catch (e) { return toast(e.message, 'error'); }
+    clearToken();
     signedOut();
     go('');
     toast('Đã đăng xuất khỏi mọi thiết bị.');

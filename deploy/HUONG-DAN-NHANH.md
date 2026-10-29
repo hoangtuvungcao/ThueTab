@@ -1,32 +1,33 @@
-# Triển khai nhanh — thuetab.hidev.dev
+# Triển khai nhanh — API thuetab.hidev.dev · Web trên Cloudflare Pages
 
 | Phần | Chạy ở | Địa chỉ |
 |---|---|---|
-| Web (giao diện) | Cloudflare Pages | `https://thuetab.hidev.dev` |
-| API + worker + game | Debian 12/13 có Docker, uvicorn `0.0.0.0:8080`, ra Internet qua Cloudflare Tunnel | `https://api-thuetab.hidev.dev` |
+| API + worker + game | Debian 12/13 có Docker, uvicorn `0.0.0.0:8080`, ra Internet qua Cloudflare Tunnel | `https://thuetab.hidev.dev` |
+| Web (giao diện) | Cloudflare Pages, domain mặc định | `https://<tên-project>.pages.dev` (ví dụ `thuetab.pages.dev`) |
 | App Android / Windows / Linux / macOS | gắn sẵn API | tải ở trang **Tải ứng dụng** |
-| iOS và máy chưa có bản cài | cài web như ứng dụng (PWA) | `https://thuetab.hidev.dev` |
+| iOS và máy chưa có bản cài | cài web như ứng dụng (PWA) | `https://<tên-project>.pages.dev` |
 
-> Dùng `api-thuetab.hidev.dev` (không phải `api.thuetab.hidev.dev`): SSL miễn phí của Cloudflare chỉ phủ subdomain một cấp.
+> Web và API ở hai site khác nhau (`pages.dev` ≠ `hidev.dev`), nên web đăng nhập bằng token (không dùng
+> cookie) — chạy được cả trên Safari/iPhone. `PUBLIC_ORIGIN` phải ghi **đúng** domain Pages.
 
 ## 1. Backend trên Debian (~10 phút)
 
 **Tạo tunnel** (Cloudflare → Zero Trust → Networks → Tunnels → Create → Cloudflared):
 - Đặt tên `thuetab`, chép **token** ở bước cài đặt.
-- Public hostname: `api-thuetab.hidev.dev` → Service `HTTP` → `localhost:8080`.
+- Public hostname: `thuetab.hidev.dev` → Service `HTTP` → `localhost:8080`.
 
 **Trên máy Debian** (cần sẵn Docker):
 ```bash
 git clone https://github.com/hoangtuvungcao/ThueTab.git && cd ThueTab
 sudo bash deploy/install-debian.sh \
-  --origin https://thuetab.hidev.dev \
+  --origin https://thuetab.pages.dev \
   --listen 0.0.0.0 --port 8080 \
   --cf-token <TOKEN_TUNNEL>
 ```
 Script tự: cài Python, build image game, tính số tab theo RAM/CPU, SQLite, zram, dịch vụ `thuetab-api`,
 `thuetab-worker`, `cloudflared`, và hỏi email để tạo admin.
 
-Kiểm tra: `curl https://api-thuetab.hidev.dev/api/health` → `{"ok":true}`.
+Kiểm tra: `curl https://thuetab.hidev.dev/api/health` → `{"ok":true}`.
 Nhật ký: `journalctl -u thuetab-api -u thuetab-worker -f`. Cấu hình: `/opt/thuetab/.env` (sửa xong
 `sudo systemctl restart thuetab-api thuetab-worker`).
 
@@ -42,14 +43,16 @@ Workers & Pages → Create → Pages → Connect to Git → chọn repo `ThueTab
 | Build command | `npm --prefix web ci && npm --prefix web run build` |
 | Build output directory | `web/dist` |
 | Root directory | *(để trống)* |
-| Environment variable | `VITE_API_BASE` = `https://api-thuetab.hidev.dev` |
+| Environment variables | `VITE_API_BASE` = `https://thuetab.hidev.dev`, `NODE_VERSION` = `20` |
 
-Sau khi build xong: Custom domains → thêm `thuetab.hidev.dev`. Mỗi lần push lên GitHub, Pages tự build lại.
+Đặt tên project (ví dụ `thuetab`) → web ở `https://thuetab.pages.dev`. Nếu tên đã có người dùng, Pages sẽ
+thêm hậu tố — khi đó sửa `PUBLIC_ORIGIN` trong `/opt/thuetab/.env` cho đúng rồi `sudo systemctl restart thuetab-api`.
+Mỗi lần push lên GitHub, Pages tự build lại.
 
 ## 3. Ứng dụng cài đặt
 Trên máy build (có Godot 4.7.2 + export templates, Android SDK, Java):
 ```bash
-bash scripts/build-apps.sh --api https://api-thuetab.hidev.dev --godot /đường/dẫn/Godot_v4.7.2
+bash scripts/build-apps.sh --api https://thuetab.hidev.dev --godot /đường/dẫn/Godot_v4.7.2
 scp exports/ThueTab-* <debian>:/opt/thuetab/data/downloads/
 ```
 Trang **Tải ứng dụng** tự nhận bản mới nhất mỗi nền tảng và gợi ý theo máy người xem; iOS luôn hướng dẫn
@@ -57,12 +60,12 @@ Trang **Tải ứng dụng** tự nhận bản mới nhất mỗi nền tảng v
 `data/android-keystore.txt` — **sao lưu và giữ bí mật**, mọi bản cập nhật APK phải dùng đúng khoá này.
 
 ## 4. Nạp tiền SePay
-Webhook: `https://api-thuetab.hidev.dev/api/payments/sepay`, xác thực API Key (≥32 ký tự).
+Webhook: `https://thuetab.hidev.dev/api/payments/sepay`, xác thực API Key (≥32 ký tự).
 Điền `SEPAY_API_KEY`, `SEPAY_API_TOKEN`, `BANK_*` trong `/opt/thuetab/.env` rồi khởi động lại API.
 Chi tiết: mục "Nạp tiền SePay" trong `deploy/README.md`.
 
 ## Cập nhật phiên bản
 ```bash
-cd ~/ThueTab && git pull && sudo bash deploy/install-debian.sh --origin https://thuetab.hidev.dev --listen 0.0.0.0 --port 8080
+cd ~/ThueTab && git pull && sudo bash deploy/install-debian.sh --origin https://thuetab.pages.dev --listen 0.0.0.0 --port 8080
 ```
 (giữ nguyên `.env`, dữ liệu và tài khoản; image game mới được build lại và mọi tab tự chuyển sang.)

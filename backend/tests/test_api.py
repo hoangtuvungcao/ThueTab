@@ -577,3 +577,14 @@ def test_cors_for_separate_frontend():
     assert pre.status_code==200 and pre.headers['access-control-allow-origin']==origin and pre.headers['access-control-allow-credentials']=='true'
     bad=c.options('/api/auth/login',headers={'Origin':'https://evil.example','Access-Control-Request-Method':'POST'})
     assert 'access-control-allow-origin' not in bad.headers
+
+def test_stream_bearer_subprotocol_cross_site():
+    a=client();tab=rent(a).json();tok=a.headers['Authorization'][7:]
+    c=TestClient(app)
+    with c.websocket_connect('/api/tabs/'+tab['id']+'/stream',subprotocols=['bearer',tok],headers={'origin':'https://thuetab.pages.dev'}) as ws:
+        assert ws.accepted_subprotocol=='bearer'
+        assert json.loads(ws.receive_text())['type']=='hello'
+    from starlette.websockets import WebSocketDisconnect
+    with pytest.raises(WebSocketDisconnect) as e:
+        with c.websocket_connect('/api/tabs/'+tab['id']+'/stream',subprotocols=['bearer','wrong'],headers={'origin':'https://thuetab.pages.dev'}) as ws: ws.receive_text()
+    assert e.value.code==4401

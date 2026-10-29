@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, KeyRound, LogOut, Lock, Unlock, Trash2, Save, Download, Coins, Check, AlertTriangle } from 'lucide-react';
-import { api, apiUrl, money, dateTime, ago, fileSize, serverNow } from '../api.js';
+import { api, downloadApi, money, dateTime, ago, fileSize, serverNow } from '../api.js';
 import { tabState, ORDER_STATUS, POLL } from '../tokens.js';
 import { useApp } from '../store.js';
 import { usePoll } from '../hooks.js';
@@ -120,7 +120,7 @@ export default function AdminUser({ id, email, onClose }) {
                       <div className="min0 grow"><span className="row gap-sm min0"><strong className="ellipsis" title={j.filename}>{j.filename}</strong><KindBadge kind={j.kind} /></span>
                         <small className="muted num">{fileSize(j.file_size)} · {dateTime(j.created)}</small></div>
                       <JarBadge status={j.status} />
-                      <a className="btn btn-sm btn-ghost btn-icon" href={apiUrl(`/admin/jars/${j.id}/download`)} download={j.filename} aria-label={`Tải ${j.filename}`} title="Tải về"><Download size={16} /></a>
+                      <Button size="sm" variant="ghost" icon={Download} aria-label={`Tải ${j.filename}`} title="Tải về" onClick={() => downloadApi(`/admin/jars/${j.id}/download`, j.filename).catch(() => {})} />
                       <Button size="sm" variant="ghost" icon={Trash2} aria-label={`Xoá ${j.filename}`} onClick={() => setDelJar(j)} />
                     </li>
                   ))}

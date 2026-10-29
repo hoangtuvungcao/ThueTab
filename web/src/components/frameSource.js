@@ -3,7 +3,7 @@
 // with HTTP fallbacks (GET /frame still while connecting, REST input while the socket is closed).
 // Multi-screen wall: HTTP polling of /frame.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, fetchFrame, wsUrl } from '../api.js';
+import { api, fetchFrame, wsUrl, wsProtocols } from '../api.js';
 
 const EMPTY = { src: '', fresh: false, err: '', w: 0, h: 0 };
 
@@ -65,7 +65,8 @@ export function useTabStream(tabId, { fps, enabled, share }) {
     const connect = () => {
       if (!alive) return;
       patch({ phase: hasFrame ? 'reconnecting' : 'connecting' });
-      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}${share ? '&share=' + encodeURIComponent(share) : ''}`));
+      // Share links authenticate with ?share=; signed-in viewers in token mode send ['bearer', token] as subprotocols.
+      const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
       ws.binaryType = 'blob';
       wsRef.current = ws;
       ws.onmessage = e => {

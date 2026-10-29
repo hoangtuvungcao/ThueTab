@@ -1,12 +1,21 @@
-// API origin. Empty (default) = same origin as the page (backend-served dist, Vite dev proxy).
-// Set VITE_API_BASE at build time when the front-end is hosted elsewhere, e.g. https://api-thuetab.hidev.dev.
+// API origin. Empty (default) = same origin as the page (backend-served dist, Vite dev proxy): the httpOnly
+// session cookie authenticates. When VITE_API_BASE is set (front-end on another SITE, e.g. *.pages.dev → API on
+// thuetab.hidev.dev) cookies are not sent cross-site, so the web switches to token auth: the token from /auth/login
+// is kept in localStorage and sent as "Authorization: Bearer"; nothing relies on cookies.
 export const API_BASE = (import.meta.env.VITE_API_BASE || '').trim().replace(/\/+$/, '');
-// Cookies must travel cross-origin when the API lives on another origin.
-const CREDENTIALS = API_BASE ? 'include' : 'same-origin';
+export const TOKEN_MODE = !!API_BASE;
+const TOKEN_KEY = 'tt_token';
+export const getToken = () => { if (!TOKEN_MODE) return ''; try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
+export const setToken = t => { if (!TOKEN_MODE) return; try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+export const clearToken = () => setToken('');
+const CREDENTIALS = TOKEN_MODE ? 'omit' : 'same-origin';
+const authHeaders = (extra = {}) => { const t = getToken(); return t ? { ...extra, Authorization: 'Bearer ' + t } : extra; };
 /** '/tabs' → '<base>/api/tabs'. Accepts paths with or without the leading '/api'. */
 export const apiUrl = p => API_BASE + (p.startsWith('/api/') ? p : '/api' + (p.startsWith('/') ? p : '/' + p));
 /** WebSocket URL on the API origin (wss for https). */
 export const wsUrl = p => (API_BASE || location.origin).replace(/^http/, 'ws') + (p.startsWith('/api/') ? p : '/api' + p);
+/** WebSocket subprotocols: in token mode the token travels as ['bearer', token] (share links use ?share= instead). */
+export const wsProtocols = () => { const t = getToken(); return t ? ['bearer', t] : undefined; };
 
 // Thin client for the ThuêTab API. Errors carry the backend's Vietnamese `detail` message.
 export class ApiError extends Error {
@@ -19,6 +28,7 @@ export const syncClock = serverTime => { if (serverTime) clockOffset = serverTim
 
 async function parse(r) {
   const data = await r.json().catch(() => null);
+  if (r.status === 401) clearToken(); // expired / revoked session
   if (!r.ok) {
     const d = data?.detail;
     const msg = typeof d === 'string' ? d : Array.isArray(d) ? 'Dữ liệu không hợp lệ.' : r.status === 413 ? 'File quá lớn.' : 'Không thể kết nối đến máy chủ.';
@@ -33,7 +43,7 @@ export async function api(path, method = 'GET', body) {
     r = await fetch(apiUrl(path), {
       method,
       credentials: CREDENTIALS,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
       body: body ? JSON.stringify(body) : undefined
     });
   } catch {
@@ -46,7 +56,7 @@ export async function uploadJar(file) {
   const r = await fetch(apiUrl('/jars/upload'), {
     method: 'POST',
     credentials: CREDENTIALS,
-    headers: { 'X-Filename': encodeURIComponent(file.name), 'Content-Type': 'application/octet-stream' },
+    headers: authHeaders({ 'X-Filename': encodeURIComponent(file.name), 'Content-Type': 'application/octet-stream' }),
     body: file
   });
   return parse(r);
@@ -54,10 +64,28 @@ export async function uploadJar(file) {
 
 // Returns a Blob, or null when the worker has not produced a fresh frame yet (404).
 export async function fetchFrame(id, signal) {
-  const r = await fetch(apiUrl(`/tabs/${id}/frame`), { credentials: CREDENTIALS, cache: 'no-store', signal });
+  const r = await fetch(apiUrl(`/tabs/${id}/frame`), { credentials: CREDENTIALS, headers: authHeaders(), cache: 'no-store', signal });
   if (r.status === 404) return null;
   if (!r.ok) await parse(r);
   return r.blob();
+}
+
+/**
+ * Download an authenticated API file (admin JAR, CSV export) as a blob, so it works with token auth where a
+ * plain <a href> could not send the Authorization header. The object URL is revoked right after.
+ */
+export async function downloadApi(path, filename) {
+  const r = await fetch(apiUrl(path), { credentials: CREDENTIALS, headers: authHeaders() });
+  if (!r.ok) await parse(r);
+  const name = filename || decodeURIComponent((r.headers.get('content-disposition') || '').match(/filename\*?=(?:UTF-8'')?"?([^";]+)/i)?.[1] || 'download');
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export const money = n => new Intl.NumberFormat('vi-VN').format(n || 0) + 'đ';

@@ -1,12 +1,12 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Users, Server, FileCode, LayoutGrid, ScrollText, Banknote, Wallet, Check, X, Save, Receipt, Download, Plus, Trash2, Pause, Clock, FileText, BarChart3, ChevronLeft, ChevronRight, MessageCircle, TicketPercent, Bell, Gift, Wrench } from 'lucide-react';
-import { api, apiUrl, money, dateTime, ago, fileSize, serverNow } from '../api.js';
+import { api, downloadApi, money, dateTime, ago, fileSize, serverNow } from '../api.js';
 import { navLabel, tabState, ORDER_STATUS, STATUS, POLL } from '../tokens.js';
 import { useApp } from '../store.js';
-import { Button, Card, Empty, PageHead, Stat, Skeleton, Badge, JarBadge, StateBadge, KindBadge, Menu, Segmented, Field, Modal } from '../components/ui.jsx';
+import { Button, Card, Empty, PageHead, Stat, Skeleton, Badge, JarBadge, StateBadge, KindBadge, Menu, Segmented, Field, Modal, useToast } from '../components/ui.jsx';
 import DataTable from '../components/DataTable.jsx';
 import { Chart } from '../components/Charts.jsx';
-import { useAdminRun, ConfirmDialog, AdminForm, DeleteTabDialog, AdminTabMenu, CSV, CSV_LABEL, csvUrl } from './adminShared.jsx';
+import { useAdminRun, ConfirmDialog, AdminForm, DeleteTabDialog, AdminTabMenu, CSV, CSV_LABEL, csvPath } from './adminShared.jsx';
 import AdminUser from './AdminUser.jsx';
 import { CouponsSection, SupportInbox, BroadcastSection, GrowthSection, MaintenanceSection, useGrowthKpis } from './AdminGrowth.jsx';
 
@@ -132,6 +132,7 @@ function TabsSection({ admin, q, email, run, setForm, setDel }) {
 }
 
 function JarsSection({ admin, q, email, run }) {
+  const toast = useToast();
   const [del, setDel] = useState(null);
   const rows = admin.jars.filter(j => !q || [j.filename, j.sha256, email[j.user_id], j.status, j.kind].some(v => String(v || '').toLowerCase().includes(q)));
   return (
@@ -144,7 +145,7 @@ function JarsSection({ admin, q, email, run }) {
         { key: 'status', label: 'Trạng thái', sort: j => j.status, render: j => <JarBadge status={j.status} /> },
         { key: 'act', label: '', className: 'right', render: j => (
           <div className="row gap-xs end">
-            <a className="btn btn-sm btn-ghost" href={apiUrl(`/admin/jars/${j.id}/download`)} download={j.filename} title={`Tải ${j.filename}`}><Download size={16} aria-hidden /> Tải về</a>
+            <Button size="sm" variant="ghost" icon={Download} title={`Tải ${j.filename}`} onClick={() => downloadApi(`/admin/jars/${j.id}/download`, j.filename).catch(e => toast(e.message, 'error'))}>Tải về</Button>
             {j.status !== 'approved' && <Button size="sm" icon={Check} onClick={() => run(() => api('/admin/jars/' + j.id, 'PATCH', { status: 'approved' }), 'Đã duyệt.')}>Duyệt</Button>}
             {j.status !== 'rejected' && <Button size="sm" variant="danger-ghost" icon={X} onClick={() => run(() => api('/admin/jars/' + j.id, 'PATCH', { status: 'rejected' }), 'Đã chặn file. Tab dùng file này sẽ dừng.')}>Chặn</Button>}
             <Button size="sm" variant="ghost" icon={Trash2} aria-label={`Xoá ${j.filename}`} onClick={() => setDel(j)} />
@@ -282,6 +283,7 @@ export default function Admin() {
   const [del, setDel] = useState(null);
   const [userId, setUserId] = useState(null);
   const run = useAdminRun();
+  const toast = useToast();
   const kpis = useGrowthKpis();
   const email = useMemo(() => Object.fromEntries((admin?.users || []).map(u => [u.id, u.email])), [admin?.users]);
   if (!admin) return <><PageHead title={navLabel('admin')} /><Skeleton variant="rows" count={5} /></>;
@@ -293,7 +295,7 @@ export default function Admin() {
   return (
     <>
       <PageHead title={navLabel('admin')} desc="Quản lý người dùng, tab, file JAR, thanh toán, máy chủ và nội dung trang.">
-        <Menu label="Xuất CSV" items={CSV.map(k => ({ label: `Xuất ${CSV_LABEL[k]} (CSV)`, icon: Download, onClick: () => { location.href = csvUrl(k); } }))} />
+        <Menu label="Xuất CSV" items={CSV.map(k => ({ label: `Xuất ${CSV_LABEL[k]} (CSV)`, icon: Download, onClick: () => downloadApi(csvPath(k), `thuetab-${k}.csv`).catch(e => toast(e.message, 'error')) }))} />
       </PageHead>
       <div className="admin-nav">
         <div className="tabs-nav" role="tablist" aria-label="Mục quản trị">

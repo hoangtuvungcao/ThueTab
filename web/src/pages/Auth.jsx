@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Gift } from 'lucide-react';
 import { hashQuery } from '../hooks.js';
-import { api } from '../api.js';
+import { api, setToken } from '../api.js';
 import { useApp } from '../store.js';
 import { Modal, Button, Field, Alert, Segmented } from '../components/ui.jsx';
 
@@ -21,6 +21,7 @@ export default function AuthDialog({ mode: initial, onClose }) {
     try {
       if (mode === 'register' && creds === f) await api('/auth/register', 'POST', { email: f.email.trim(), password: f.password, name: f.name.trim() || 'Game thủ', ref: ref || undefined });
       const r = await api('/auth/login', 'POST', { email: creds.email.trim(), password: creds.password });
+      setToken(r.token); // token mode only (cross-site API); no-op when the cookie is used
       onLogin(r.user);
     } catch (e) {
       setErr(e.message);

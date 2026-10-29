@@ -686,16 +686,20 @@ def share_check(token,id):
 @app.websocket('/api/tabs/{id}/stream')
 async def stream_view(ws:WebSocket,id:str):
     share=ws.query_params.get('share','')
-    token=ws.headers.get('authorization','').removeprefix('Bearer ') or ws.cookies.get('tt_session','')
+    # Browsers can't set headers on a WebSocket, so a front-end on another site (Cloudflare Pages) sends its
+    # bearer token as a subprotocol: new WebSocket(url, ['bearer', token]). The server echoes 'bearer'.
+    protos=[x.strip() for x in ws.headers.get('sec-websocket-protocol','').split(',') if x.strip()]
+    proto_token=protos[1] if len(protos)>=2 and protos[0]=='bearer' else ''
+    token=ws.headers.get('authorization','').removeprefix('Bearer ') or proto_token or ws.cookies.get('tt_session','')
     origin=ws.headers.get('origin')
-    # Cookie auth from browsers must come from our own origin (blocks cross-site WebSocket hijacking).
-    # Share links carry their own unguessable token instead of a session.
-    if not share and not ws.headers.get('authorization') and origin not in (*ORIGINS, *DEV_ORIGINS):
+    # Cookie auth from browsers must come from an allowed origin (blocks cross-site WebSocket hijacking).
+    # Bearer tokens and share tokens are never sent automatically, so they don't need that check.
+    if not share and not ws.headers.get('authorization') and not proto_token and origin not in (*ORIGINS, *DEV_ORIGINS):
         await ws.close(code=4403); return
     check=(lambda: share_check(share,id)) if share else (lambda: stream_check(token,id))
     info,err=await run_in_threadpool(check)
     can_control=info[2] if share and info else True
-    await ws.accept()
+    await ws.accept(subprotocol='bearer' if proto_token else None)
     if err: await ws.close(code=err); return
     try: fps=int(ws.query_params.get('fps','30'))
     except ValueError: fps=30

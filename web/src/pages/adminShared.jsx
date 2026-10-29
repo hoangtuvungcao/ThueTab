@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pause, Play, Repeat, RotateCw, Clock, Terminal, Trash2 } from 'lucide-react';
-import { api, apiUrl, money, dateTime, serverNow } from '../api.js';
+import { api, money, dateTime, serverNow } from '../api.js';
 import { tabState } from '../tokens.js';
 import { useApp } from '../store.js';
 import { Button, Modal, Field, Menu, Alert, Confirm } from '../components/ui.jsx';
@@ -105,5 +105,6 @@ export function AdminTabMenu({ t, run, ownerJars, onExtend, onDelete }) {
 
 export const CSV = ['users', 'orders', 'ledger', 'tabs'];
 export const CSV_LABEL = { users: 'Người dùng', orders: 'Đơn nạp', ledger: 'Lịch sử ví', tabs: 'Tab' };
-export const csvUrl = k => apiUrl(`/admin/export/${k}.csv`);
+// Authenticated: fetched with downloadApi (works with cookie or Bearer token).
+export const csvPath = k => `/admin/export/${k}.csv`;
 export { Alert };
