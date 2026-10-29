@@ -62,3 +62,4 @@ for P in "${TARGETS[@]}"; do
 done
 [ ${#FAILED[@]} -eq 0 ] || { echo "Build lỗi: ${FAILED[*]}"; exit 1; }
 echo "Đã đăng lên trang Tải ứng dụng (data/downloads/)."
+echo "Phát hành cho server tải về: gh release create vX.Y.Z exports/ThueTab-{Android.apk,Windows.exe,Linux.x86_64,macOS.zip}"

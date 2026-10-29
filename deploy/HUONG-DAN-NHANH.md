@@ -50,14 +50,18 @@ thêm hậu tố — khi đó sửa `PUBLIC_ORIGIN` trong `/opt/thuetab/.env` ch
 Mỗi lần push lên GitHub, Pages tự build lại.
 
 ## 3. Ứng dụng cài đặt
-Trên máy build (có Godot 4.7.2 + export templates, Android SDK, Java):
+Bản cài Android / Windows / Linux / macOS nằm ở **GitHub Releases**
+(https://github.com/hoangtuvungcao/ThueTab/releases). Script cài đặt **tự tải về** `/opt/thuetab/data/downloads/`,
+trang **Tải ứng dụng** tự hiện và gợi ý theo máy người xem; iOS luôn hướng dẫn "Chia sẻ → Thêm vào Màn hình chính".
+Tải lại bản mới nhất bất cứ lúc nào: `bash /opt/thuetab/scripts/fetch-apps.sh /opt/thuetab/data`.
+
+Phát hành phiên bản mới (trên máy build có Godot 4.7.2 + export templates, Android SDK, Java):
 ```bash
 bash scripts/build-apps.sh --api https://thuetab.hidev.dev --godot /đường/dẫn/Godot_v4.7.2
-scp exports/ThueTab-* <debian>:/opt/thuetab/data/downloads/
+gh release create v1.2.0 exports/ThueTab-{Android.apk,Windows.exe,Linux.x86_64,macOS.zip}
 ```
-Trang **Tải ứng dụng** tự nhận bản mới nhất mỗi nền tảng và gợi ý theo máy người xem; iOS luôn hướng dẫn
-"Chia sẻ → Thêm vào Màn hình chính". Khoá ký Android nằm ở `data/android-release.keystore` +
-`data/android-keystore.txt` — **sao lưu và giữ bí mật**, mọi bản cập nhật APK phải dùng đúng khoá này.
+Khoá ký Android: `data/android-release.keystore` + `data/android-keystore.txt` (không có trên GitHub) —
+**sao lưu và giữ bí mật**, mọi bản APK cập nhật phải ký bằng đúng khoá này.
 
 ## 4. Nạp tiền SePay
 Webhook: `https://thuetab.hidev.dev/api/payments/sepay`, xác thực API Key (≥32 ký tự).
@@ -75,3 +79,14 @@ Một tunnel chỉ nên có **một** nơi chạy `cloudflared` cho ứng dụng
 (ví dụ Windows), khi chuyển sang VPS hãy gỡ bản cũ (`cloudflared service uninstall` trên máy đó), nếu không
 Cloudflare chia lượng truy cập giữa hai máy và một nửa request sẽ lỗi. Token: Tunnels → `thuetab` →
 **Add a replica** → chép phần `eyJ…` trong lệnh `cloudflared service install eyJ…`.
+
+## Xử lý sự cố mạng (máy ảo / NAT)
+Script đã tự: ưu tiên IPv4 (apt, pip, git, Docker), chuyển kho Debian sang HTTPS, tắt HTTP pipelining.
+Nếu vẫn lỗi:
+
+| Dấu hiệu | Cách sửa |
+|---|---|
+| `Network is unreachable` tới địa chỉ `2a04:…` | IPv6 hỏng — chạy lại script (đã tự xử lý) |
+| `Tried to start delayed item … but failed`, `Connection reset by peer`, file nhỏ tải được nhưng file lớn đứt | MTU quá lớn: thêm `--mtu 1280` vào lệnh cài |
+| `from versions: none` khi cài Python | không tới được PyPI: `curl -4 -I https://pypi.org/simple/` |
+| Web báo bảo trì / không đăng nhập được | `curl https://thuetab.hidev.dev/api/health`, kiểm tra `PUBLIC_ORIGIN` = đúng domain Pages |

@@ -11,9 +11,11 @@
 # --cf-token install cloudflared and run the tunnel created in the Cloudflare dashboard (Zero Trust → Tunnels).
 # --capacity override the automatic number of game tabs.
 # --with-web also build and serve the web front-end from this machine (not needed with Cloudflare Pages).
+# --no-apps  skip downloading the app builds from GitHub Releases.
+# --mtu N    lower the network MTU (e.g. 1280) when large downloads get reset; kept across reboots.
 set -euo pipefail
 
-ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0
+ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0; WITH_APPS=1; MTU=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --origin) ORIGIN="$2"; shift 2 ;;
@@ -21,6 +23,8 @@ while [ $# -gt 0 ]; do
     --port) PORT="$2"; shift 2 ;;
     --cf-token) CF_TOKEN="$2"; shift 2 ;;
     --with-web) WITH_WEB=1; shift ;;
+    --no-apps) WITH_APPS=0; shift ;;
+    --mtu) MTU="$2"; shift 2 ;;
     --capacity) CAPACITY="$2"; shift 2 ;;
     *) echo "Tham số không hợp lệ: $1" >&2; exit 1 ;;
   esac
@@ -30,6 +34,26 @@ done
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 APP=/opt/thuetab
+if [ -n "$MTU" ]; then
+  IFACE="$(ip route show default | awk '{print $5; exit}')"
+  echo "==> MTU $MTU cho $IFACE (giữ sau khi khởi động lại)"
+  ip link set "$IFACE" mtu "$MTU"
+  cat > /etc/systemd/system/thuetab-mtu.service <<UNIT
+[Unit]
+Description=ThuêTab: MTU $MTU on $IFACE (large downloads were reset at the default MTU)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ip link set $IFACE mtu $MTU
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload && systemctl enable thuetab-mtu >/dev/null 2>&1 || true
+fi
+
 echo "==> Cài gói hệ thống"
 # VMs behind NAT (e.g. VirtualBox) often resolve IPv6 mirrors they cannot reach: make apt use IPv4 then.
 if ! ip -6 route show default 2>/dev/null | grep -q .; then
@@ -176,6 +200,11 @@ if [ -n "$CF_TOKEN" ]; then
     apt-get update -qq && apt-get install -y -qq cloudflared >/dev/null
   fi
   cloudflared service install "$CF_TOKEN" >/dev/null 2>&1 || systemctl restart cloudflared
+fi
+
+if [ "$WITH_APPS" = 1 ]; then
+  echo "==> Tải bản cài ứng dụng từ GitHub Releases (Android, Windows, Linux, macOS)"
+  runuser -u thuetab -- bash "$APP/scripts/fetch-apps.sh" "$APP/data" || echo "   (bỏ qua — chạy lại sau: bash $APP/scripts/fetch-apps.sh $APP/data)"
 fi
 
 echo
