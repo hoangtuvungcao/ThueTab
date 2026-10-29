@@ -50,10 +50,15 @@ thêm hậu tố — khi đó sửa `PUBLIC_ORIGIN` trong `/opt/thuetab/.env` ch
 Mỗi lần push lên GitHub, Pages tự build lại.
 
 ## 3. Ứng dụng cài đặt
-Bản cài Android / Windows / Linux / macOS nằm ở **GitHub Releases**
-(https://github.com/hoangtuvungcao/ThueTab/releases). Script cài đặt **tự tải về** `/opt/thuetab/data/downloads/`,
-trang **Tải ứng dụng** tự hiện và gợi ý theo máy người xem; iOS luôn hướng dẫn "Chia sẻ → Thêm vào Màn hình chính".
-Tải lại bản mới nhất bất cứ lúc nào: `bash /opt/thuetab/scripts/fetch-apps.sh /opt/thuetab/data`.
+Bản cài Android / Windows / Linux / macOS được build sẵn và đăng ở **GitHub Releases** của repo. Script cài đặt
+**tải về máy chủ** (`/opt/thuetab/data/downloads/`) và trang **Tải ứng dụng** phục vụ trực tiếp từ máy chủ — người
+dùng không cần truy cập GitHub. iOS luôn hướng dẫn "Chia sẻ → Thêm vào Màn hình chính".
+
+**Repo riêng tư**: tạo token GitHub (Settings → Developer settings → Fine-grained tokens → chọn repo `ThueTab`,
+quyền **Contents: Read-only**) rồi thêm `--github-token <token>` vào lệnh cài. Token được lưu trong
+`/opt/thuetab/.env` để lần sau tải lại. Clone/pull repo riêng tư:
+`git clone https://<token>@github.com/hoangtuvungcao/ThueTab.git`.
+Tải lại bản mới nhất: `cd /opt/thuetab && GITHUB_TOKEN=<token> bash scripts/fetch-apps.sh /opt/thuetab/data`.
 
 Phát hành phiên bản mới (trên máy build có Godot 4.7.2 + export templates, Android SDK, Java):
 ```bash

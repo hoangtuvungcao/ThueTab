@@ -11,11 +11,12 @@
 # --cf-token install cloudflared and run the tunnel created in the Cloudflare dashboard (Zero Trust → Tunnels).
 # --capacity override the automatic number of game tabs.
 # --with-web also build and serve the web front-end from this machine (not needed with Cloudflare Pages).
-# --with-apps also store the app builds on this server (default: the download page links to GitHub Releases).
+# --no-apps  skip downloading the app builds (they are served by this server on the download page).
+# --github-token  token with read access, needed for a private repo (app downloads); saved in .env.
 # --mtu N    lower the network MTU (e.g. 1280) when large downloads get reset; kept across reboots.
 set -euo pipefail
 
-ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0; WITH_APPS=0; MTU=""
+ORIGIN=""; LISTEN="127.0.0.1"; PORT=8080; CF_TOKEN=""; CAPACITY=""; WITH_WEB=0; WITH_APPS=1; MTU=""; GH_TOKEN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --origin) ORIGIN="$2"; shift 2 ;;
@@ -25,6 +26,7 @@ while [ $# -gt 0 ]; do
     --with-web) WITH_WEB=1; shift ;;
     --no-apps) WITH_APPS=0; shift ;;
     --with-apps) WITH_APPS=1; shift ;;
+    --github-token) GH_TOKEN="$2"; shift 2 ;;
     --mtu) MTU="$2"; shift 2 ;;
     --capacity) CAPACITY="$2"; shift 2 ;;
     *) echo "Tham số không hợp lệ: $1" >&2; exit 1 ;;
@@ -135,8 +137,6 @@ COOKIE_SECURE=$SECURE
 API_PORT=$PORT
 TRUSTED_PROXIES=127.0.0.1/32,::1/128,172.16.0.0/12
 JAR_AUTO_APPROVE=true
-# Trang Tải ứng dụng dẫn tới bản cài trên GitHub Releases (không tốn băng thông máy chủ)
-APP_RELEASE_REPO=hoangtuvungcao/ThueTab
 ALLOW_FILTERED_EGRESS=true
 TRIAL_MINUTES=60
 # Điền để bật nạp tiền tự động:
@@ -207,7 +207,10 @@ fi
 
 if [ "$WITH_APPS" = 1 ]; then
   echo "==> Tải bản cài ứng dụng từ GitHub Releases (Android, Windows, Linux, macOS)"
-  runuser -u thuetab -- bash "$APP/scripts/fetch-apps.sh" "$APP/data" || echo "   (bỏ qua — chạy lại sau: bash $APP/scripts/fetch-apps.sh $APP/data)"
+  [ -n "$GH_TOKEN" ] && { sed -i '/^GITHUB_TOKEN=/d' "$APP/.env"; echo "GITHUB_TOKEN=$GH_TOKEN" >> "$APP/.env"; }
+  TOKEN_ENV="$(sed -n 's/^GITHUB_TOKEN=//p' "$APP/.env")"
+  runuser -u thuetab -- env GITHUB_TOKEN="$TOKEN_ENV" bash "$APP/scripts/fetch-apps.sh" "$APP/data" \
+    || echo "   (chưa tải xong — chạy lại: cd $APP && GITHUB_TOKEN=... bash scripts/fetch-apps.sh $APP/data)"
 fi
 
 echo
