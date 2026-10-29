@@ -34,6 +34,8 @@ echo "==> Cài gói hệ thống"
 # VMs behind NAT (e.g. VirtualBox) often resolve IPv6 mirrors they cannot reach: make apt use IPv4 then.
 if ! ip -6 route show default 2>/dev/null | grep -q .; then
   echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+  # Same problem for pip, git and Docker pulls: make every program try IPv4 addresses first.
+  grep -q '^precedence ::ffff:0:0/96' /etc/gai.conf 2>/dev/null || echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 fi
 # Flaky NAT/ISP links break pipelined HTTP downloads ("Tried to start delayed item ... but failed").
 printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::Retries "5";\n' > /etc/apt/apt.conf.d/99thuetab-net
@@ -66,8 +68,12 @@ mkdir -p "$APP/data"
 
 echo "==> Môi trường Python"
 [ -x "$APP/.venv/bin/python" ] || python3 -m venv "$APP/.venv"
-"$APP/.venv/bin/pip" install -q --upgrade pip
-"$APP/.venv/bin/pip" install -q -r "$APP/backend/requirements.txt"
+PIP="$APP/.venv/bin/pip --disable-pip-version-check --retries 10 --timeout 60"
+$PIP install -q --upgrade pip || true
+if ! $PIP install -q -r "$APP/backend/requirements.txt"; then
+  echo "Không tải được thư viện Python từ PyPI. Kiểm tra mạng: curl -4 -I https://pypi.org/simple/sqlalchemy/" >&2
+  exit 1
+fi
 
 # The web front-end is served by Cloudflare Pages; build it here only when asked (--with-web) to also
 # serve it from this machine.
