@@ -604,3 +604,15 @@ def test_downloads_fall_back_to_github_release(monkeypatch):
     dl={x['platform']:x for x in TestClient(app).get('/api/config').json()['downloads']}
     assert dl['android']['url']=='/api/downloads/ThueTab-Android.apk'      # local build wins
     assert dl['macos']['url'].startswith('https://github.com/')              # missing locally -> release link
+
+def test_order_code_matches_sepay_default_template():
+    import re as _re
+    c=client();ad=client('admin@test.vn')
+    o=c.post('/api/wallet/orders',json={'amount':20000}).json()
+    assert _re.fullmatch(r'TT\d{10}',o['code'])
+    webhook=TestClient(app);headers={'Authorization':'Apikey '+os.environ['SEPAY_API_KEY']}
+    before=c.get('/api/me').json()['balance']
+    b={'id':777001,'accountNumber':'123456789','gateway':'Vietcombank','referenceCode':'FT777','transferType':'in',
+       'transferAmount':20000,'content':'MBVCB.123 '+o['code']+' chuyen tien','code':o['code']}
+    assert webhook.post('/api/payments/sepay',headers=headers,json=b).json()['matched'] is True
+    assert c.get('/api/me').json()['balance']==before+20000

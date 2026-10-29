@@ -853,7 +853,11 @@ def create_order(b:Topup,u=Depends(current)):
     if not live_payment(): raise HTTPException(503,'Nạp tiền đang tạm ngưng, vui lòng thử lại sau.')
     with tx() as s:
         code=features.coupon_quote(s,b.coupon,u.id,'topup',b.amount)[0].code if b.coupon else ''
-        o=Order(id=uid(),user_id=u.id,code='TT'+secrets.token_hex(6).upper(),amount=b.amount,coupon=code)
+        # TT + 10 digits fits SePay's default payment-code template (prefix TT, 3–10 digits).
+        while True:
+            pay_code='TT'+str(10**9+secrets.randbelow(9*10**9))
+            if not s.scalar(select(Order.id).where(Order.code==pay_code)): break
+        o=Order(id=uid(),user_id=u.id,code=pay_code,amount=b.amount,coupon=code)
         s.add(o);s.flush();return order_info(o)
 
 @app.delete('/api/wallet/orders/{id}')
@@ -897,8 +901,10 @@ async def sepay(req:Request):
 
 def credit(transaction,reference,amount,content,code,source):
     """Credit one bank transfer to its order exactly once. Returns credited|duplicate|unmatched|conflict."""
-    codes=set(re.findall(r'(?<![A-Z0-9])TT[A-F0-9]{12}(?![A-Z0-9])',content.upper()))
-    if code and re.fullmatch(r'TT[A-F0-9]{12}',str(code).upper()): codes.add(str(code).upper())
+    # Current codes: TT + 10 digits; older orders used TT + 12 hex characters.
+    pattern=r'TT(?:\d{10}|[A-F0-9]{12})'
+    codes=set(re.findall(r'(?<![A-Z0-9])'+pattern+r'(?![A-Z0-9])',content.upper()))
+    if code and re.fullmatch(pattern,str(code).upper()): codes.add(str(code).upper())
     ref=os.getenv('BANK_NAME','')+':'+reference
     try:
         with tx() as s:
