@@ -110,7 +110,8 @@ var _modal_dim: ColorRect
 var _modal_width: float = 560.0
 var _sheet_offset: float = 0.0  # slide-in offset for bottom sheets (animated, applied by _layout_modal)
 var _kb_h: float = 0.0  # on-screen keyboard height in UI units: dialogs sit above it ("Gõ chữ vào game")
-var _kb_top := false  # typing in a dialog but the keyboard height is unknown (some Android builds report 0): dialog goes to the top
+var _kb_top := false  # typing in a dialog, keyboard height unknown by any means: dialog goes to the top
+var _ime_view: Variant = null  # Android decor view, read for the keyboard (IME) inset; false = not available
 var _pop_layer: Control  # notifications popover (desktop)
 var _bell: Button
 var _retired: Array = []
@@ -1323,17 +1324,43 @@ func _layout_modal() -> void:
 
 func _watch_keyboard() -> void:
 	var px := DisplayServer.virtual_keyboard_get_height()
+	var known := px > 0
+	if not known and OS.get_name() == "Android":
+		var ime := _android_ime_px()
+		if ime >= 0:
+			px = ime
+			known = true
 	var win := DisplayServer.window_get_size()
 	var h := px * size.y / float(win.y) if win.y > 0 and px > 0 else 0.0
 	var focus := get_viewport().gui_get_focus_owner()
 	var typing := _overlay != null and _overlay.visible and (focus is LineEdit or focus is TextEdit) and _modal_panel.is_ancestor_of(focus)
-	var top := typing and h <= 0.0
+	var top := typing and not known
 	if absf(h - _kb_h) < 1.0 and top == _kb_top:
 		return
 	_kb_h = h
 	_kb_top = top
 	if _overlay and _overlay.visible:
 		_layout_modal()
+
+
+## Keyboard height in px from Android's window insets, or -1 when they cannot be read. Godot reports 0 on
+## edge-to-edge windows, where the keyboard does not shrink the visible frame; the insets still have it.
+func _android_ime_px() -> int:
+	if _ime_view == null:
+		_ime_view = false
+		if Engine.has_singleton("AndroidRuntime"):
+			var activity: Variant = Engine.get_singleton("AndroidRuntime").getActivity()
+			if activity != null:
+				var view: Variant = activity.getWindow().getDecorView()
+				if view != null:
+					_ime_view = view
+	if _ime_view is bool:
+		return -1
+	var ins: Variant = _ime_view.getRootWindowInsets()
+	if ins == null:
+		return -1
+	# System-window insets include the keyboard; stable insets are the bars alone.
+	return maxi(0, int(ins.getSystemWindowInsetBottom()) - int(ins.getStableInsetBottom()))
 
 
 ## Confirm (components.confirm): round icon on top, centred title + text, two equal buttons.
