@@ -78,6 +78,7 @@ func render() -> void:
 		var actions := UI.flow(c)
 		var rent := UI.button(actions, "Thuê tab với file này", func() -> void: Actions.rent(app, str(j.id)), "")
 		rent.disabled = st != "approved"
+		UI.button(actions, "Đổi tên", func() -> void: Actions.rename_jar(app, j), "")
 		UI.button(actions, "Xóa", func() -> void:
 			app.confirm("Xóa file JAR", "Xóa \"%s\"? Không thể xóa khi còn tab đang dùng file này." % str(j.filename), "Xóa", func() -> void:
 				await app.act("/jars/" + str(j.id), Api.DELETE, null, "Đã xóa file JAR."), true), "DangerButton")

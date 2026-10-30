@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileCode, Trash2, Play, ShieldCheck } from 'lucide-react';
+import { UploadCloud, FileCode, Trash2, Play, ShieldCheck, Pencil } from 'lucide-react';
 import { api, fileSize, dateTime } from '../api.js';
 import { navLabel } from '../tokens.js';
 import { useApp } from '../store.js';
@@ -12,6 +12,7 @@ export default function Jars() {
   const input = useRef(null);
   const [drag, setDrag] = useState(false);
   const [del, setDel] = useState(null);
+  const [ren, setRen] = useState(null);
   const paged = usePaged(jars || []);
   const autoApprove = config.jar_auto_approve !== false; // field may be absent on older servers
 
@@ -56,6 +57,7 @@ export default function Jars() {
                     <td className="right">
                       <div className="row gap-xs end">
                         {j.status === 'approved' && <Button size="sm" icon={Play} onClick={() => open('rent', { jarId: j.id })}>Thuê tab</Button>}
+                        <Button size="sm" variant="ghost" icon={Pencil} aria-label={`Đổi tên ${j.filename}`} title="Đổi tên" onClick={() => setRen(j)} />
                         <Button size="sm" variant="ghost" icon={Trash2} aria-label={`Xóa ${j.filename}`} title="Xóa file" onClick={() => setDel(j)} />
                       </div>
                     </td>
@@ -68,6 +70,7 @@ export default function Jars() {
         )}
       </Card>
 
+      {ren && <RenameJar jar={ren} onClose={() => setRen(null)} />}
       {del && (
         <Confirm title={`Xóa "${del.filename}"?`} danger confirmLabel="Xóa file" onClose={() => setDel(null)}
           onConfirm={() => act(() => api('/jars/' + del.id, 'DELETE'), 'Đã xóa file JAR.')}>
@@ -77,5 +80,31 @@ export default function Jars() {
         </Confirm>
       )}
     </>
+  );
+}
+
+// Only the name is editable: the ".jar" extension stays (shown after the field, added back by the server).
+function RenameJar({ jar, onClose }) {
+  const { act } = useApp();
+  const [name, setName] = useState(jar.filename.replace(/\.jar$/i, ''));
+  const [busy, setBusy] = useState(false);
+  const submit = async e => {
+    e.preventDefault();
+    setBusy(true);
+    const ok = await act(() => api('/jars/' + jar.id, 'PATCH', { filename: name.trim() + '.jar' }), 'Đã đổi tên file.');
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal title="Đổi tên file JAR" onClose={onClose}
+      footer={<><Button variant="ghost" onClick={onClose}>Hủy</Button><Button variant="primary" type="submit" form="rename-jar" loading={busy} disabled={!name.trim()}>Lưu</Button></>}>
+      <form id="rename-jar" onSubmit={submit}>
+        <div className="field">
+          <label htmlFor="jar-name">Tên mới</label>
+          <div className="input-addon"><input id="jar-name" value={name} maxLength={115} onChange={e => setName(e.target.value)} data-autofocus /><span className="suffix">.jar</span></div>
+          <small className="hint">Chỉ đổi tên cho dễ nhớ; file game và đuôi .jar giữ nguyên.</small>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -736,3 +736,14 @@ def test_same_jar_twice_is_stored_once():
     r2=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup-again.jar'}).json()
     assert r1['jar']['id']==r2['jar']['id'] and r2.get('duplicate') is True
     assert sum(1 for j in a.get('/api/jars').json() if j['id']==r1['jar']['id'])==1
+
+def test_jar_name_from_android_picker_and_rename():
+    c=client()
+    up=c.post('/api/jars/upload', headers={'X-Filename': 'primary%253ADownload%252FNinja%2520School.jar'}, content=make_jar())
+    jar=up.json()['jar']
+    assert jar['filename'] == 'Ninja School.jar'
+    r=c.patch('/api/jars/'+jar['id'], json={'filename': '  NSO bản mod.zip  '})
+    assert r.status_code == 200 and r.json()['jar']['filename'] == 'NSO bản mod.zip.jar'
+    assert c.patch('/api/jars/'+jar['id'], json={'filename': 'NSO.JAR'}).json()['jar']['filename'] == 'NSO.jar'
+    assert c.patch('/api/jars/'+jar['id'], json={'filename': ' .jar '}).status_code == 422
+    assert client('admin@test.vn').patch('/api/jars/'+jar['id'], json={'filename': 'x'}).status_code == 404

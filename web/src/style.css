@@ -96,6 +96,7 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
 .input-addon { position: relative; }
 .input-addon input[type] { padding-right: 44px; }
 .input-addon .btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.input-addon .suffix { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); cursor: pointer; }
 .inline-field input { width: 72px !important; height: 32px !important; }
 .stepper { display: flex; align-items: center; gap: var(--s-md); }

@@ -285,6 +285,9 @@ async def lifespan(app):
     if SEPAY_API_TOKEN and live_payment(): threading.Thread(target=sepay_loop,args=(stop,),daemon=True).start()
     with tx() as s:
         if not s.get(Worker,'local-1'): s.add(Worker(id='local-1',capacity=int(os.getenv('WORKER_CAPACITY','4'))))
+        # Names stored before jar_name() existed, e.g. "primary%3ADownload%2Fgame.jar" from the Android app.
+        for j in s.scalars(select(CustomJar).where(CustomJar.filename.contains('%') | CustomJar.filename.contains('/') | CustomJar.filename.contains(':'))):
+            j.filename=jar_name(j.filename)
     yield
     stop.set()
 
@@ -449,11 +452,7 @@ MAX_JARS_PER_USER = 50
 @app.post('/api/jars/upload')
 async def upload_jar(req:Request,u=Depends(current)):
     limit('jar-upload:'+u.id, 10, 300)
-    raw_name = req.headers.get('x-filename', '')
-    from urllib.parse import unquote
-    filename = unquote(raw_name).strip() if raw_name else 'custom.jar'
-    if not filename.lower().endswith('.jar'):
-        filename += '.jar'
+    filename = jar_name(req.headers.get('x-filename', ''))
     content = await req.body()
     if len(content) > 31_457_280:
         raise HTTPException(413, 'Dung lượng file vượt quá giới hạn 30MB.')
@@ -473,6 +472,32 @@ async def upload_jar(req:Request,u=Depends(current)):
         cjar = CustomJar(id=jar_id, user_id=u.id, filename=filename[:120], file_size=len(content), sha256=digest, kind=kind, midlet=midlet, screen=screen, status='approved' if JAR_AUTO_APPROVE or u.role=='admin' else 'pending')
         s.add(cjar); s.flush()
         audit(s,u.id,'jar.upload',jar_id)
+        return {'ok':True,'jar':jar_dict(cjar)}
+
+def jar_stem(raw:str)->str:
+    # Display name for a JAR: the last path segment (Android pickers send "primary%3ADownload%2Fgame.jar"), no control
+    # characters, always ending in ".jar". Only the name is the user's to change, never the extension.
+    from urllib.parse import unquote
+    name=raw
+    for _ in range(3):  # names can arrive encoded twice
+        if '%' not in name: break
+        name=unquote(name)
+    name=re.split(r'[/\\:]',name)[-1]
+    name=re.sub(r'[\x00-\x1f\x7f]','',name).strip()
+    if name.lower().endswith('.jar'): name=name[:-4].rstrip()
+    return name[:115]
+def jar_name(raw:str)->str: return (jar_stem(raw) or 'custom')+'.jar'
+
+class JarRename(BaseModel): filename:str=Field(min_length=1,max_length=200)
+
+@app.patch('/api/jars/{id}')
+def rename_jar(id:str,b:JarRename,u=Depends(current)):
+    with tx() as s:
+        cjar = s.scalar(select(CustomJar).where(CustomJar.id==id, CustomJar.user_id==u.id))
+        if not cjar: raise HTTPException(404, 'Không tìm thấy file JAR.')
+        stem=jar_stem(b.filename)
+        if not stem: raise HTTPException(422,'Tên file không được để trống.')
+        cjar.filename=stem+'.jar'
         return {'ok':True,'jar':jar_dict(cjar)}
 
 @app.delete('/api/jars/{id}')

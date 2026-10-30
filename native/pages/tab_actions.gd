@@ -340,6 +340,32 @@ static func rename(app: Node, tab: Dictionary) -> void:
 	input.grab_focus.call_deferred()
 
 
+## Rename a JAR: only the name, the ".jar" extension is fixed (shown after the field).
+static func rename_jar(app: Node, jar: Dictionary) -> void:
+	var body: VBoxContainer = app.open_modal("Đổi tên file JAR", 420)
+	var input := UI.field(body, "Tên mới", "Tên dễ nhớ")
+	var box := input.get_parent()
+	var line := UI.hbox(box, T.space("sm"))
+	input.reparent(line)
+	UI.label(line, ".jar", "MutedLabel", false).size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	input.text = str(jar.filename).trim_suffix(".jar").trim_suffix(".JAR")
+	input.max_length = 115
+	UI.label(body, "Chỉ đổi tên cho dễ nhớ; file game và đuôi .jar giữ nguyên.", "MutedLabel")
+	var row: HBoxContainer = app.modal_footer()
+	UI.button(row, "Hủy", app.close_modal, "GhostButton")
+	var save := func() -> void:
+		var stem := input.text.strip_edges()
+		if stem.is_empty():
+			app.toast("Tên file không được để trống.", true)
+			return
+		var r: Dictionary = await app.act("/jars/" + str(jar.id), Api.PATCH, {"filename": stem + ".jar"}, "Đã đổi tên file.")
+		if r.ok:
+			app.close_modal()
+	UI.button(row, "Lưu", save, "PrimaryButton")
+	input.text_submitted.connect(func(_t: String) -> void: save.call())
+	input.grab_focus.call_deferred()
+
+
 ## Renew a tab (is_slot=false) or a slot (is_slot=true) with one of config.plans.
 static func renew(app: Node, item: Dictionary, is_slot: bool) -> void:
 	var title := "Gia hạn slot" if is_slot else "Gia hạn: %s" % str(item.get("name", ""))
@@ -447,31 +473,45 @@ static func pick_and_upload(app: Node, on_done: Callable = Callable()) -> void:
 	fd.popup_centered_ratio(0.7)
 
 
+## File name to show and send: Android pickers give "content://…/document/primary%3ADownload%2Fgame.jar",
+## so the URI is decoded and only the last path part is kept.
+static func file_name(path: String) -> String:
+	var name := path
+	for i in 3:
+		if not name.contains("%"):
+			break
+		name = name.uri_decode()
+	name = name.get_file()
+	return name.get_slice(":", name.get_slice_count(":") - 1)
+
+
 static func upload(app: Node, path: String) -> Dictionary:
 	var max_mb := int(app.config.get("jar_max_mb", 30))
-	if not path.to_lower().ends_with(".jar"):
+	var name := file_name(path)
+	# content:// documents may have no ".jar" in the name at all; the server checks the file itself.
+	if not path.begins_with("content://") and not name.to_lower().ends_with(".jar"):
 		app.toast("Chỉ chấp nhận file .jar.", true)
 		return {}
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
-		app.toast("Không mở được file: " + path.get_file(), true)
+		app.toast("Không mở được file: " + name, true)
 		return {}
 	if f.get_length() > max_mb * 1048576:
 		app.toast("File vượt quá %d MB." % max_mb, true)
 		return {}
 	var bytes := f.get_buffer(f.get_length())
 	f.close()
-	app.toast("Đang tải lên %s (%s)…" % [path.get_file(), UI.file_size(bytes.size())])
+	app.toast("Đang tải lên %s (%s)…" % [name, UI.file_size(bytes.size())])
 	var r: Dictionary = await app.api.request_raw("/jars/upload", Api.POST, bytes, PackedStringArray([
 		"Content-Type: application/octet-stream",
-		"X-Filename: " + path.get_file().uri_encode(),
+		"X-Filename: " + name.uri_encode(),
 	]))
 	if not r.ok:
 		app.toast(r.error, true)
 		return {}
 	var jar: Dictionary = r.data.get("jar", {})
 	var st := str(jar.get("status", "approved"))
-	app.toast("Đã tải lên %s (%s)." % [path.get_file(), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
+	app.toast("Đã tải lên %s (%s)." % [str(jar.get("filename", name)), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
 	var rj: Dictionary = await app.api.request("/jars")
 	if rj.ok:
 		app.jars = rj.data
