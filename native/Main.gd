@@ -632,10 +632,28 @@ func open_link(link: String) -> void:
 		return
 	match parts[0]:
 		"tabs":
-			if parts.size() > 1:
-				go("viewer", {"id": parts[1]})
-			else:
+			if parts.size() < 2:
 				go("tabs")
+				return
+			# Old notifications can point at a tab that has since expired or been removed: say so instead of
+			# opening an empty game screen. Expired → straight to renewing it; removed → the tab list.
+			var Actions := preload("res://native/pages/tab_actions.gd")
+			var r: Dictionary = await api.request("/tabs")  # fresh: the tab may have gone since the last poll
+			if r.ok:
+				tabs = r.data
+			var t: Dictionary = {}
+			for x in tabs:
+				if str(x.get("id", "")) == parts[1]:
+					t = x
+			if t.is_empty():
+				go("tabs")
+				toast("Tab này đã bị xóa hoặc giải phóng nên không còn mở được.")
+			elif Actions.is_expired(t):
+				go("tabs")
+				toast("Tab \"%s\" đã hết hạn — gia hạn để chơi tiếp." % str(t.get("name", "")))
+				Actions.renew(self, t, false)
+			else:
+				go("viewer", {"id": parts[1]})
 		"support":
 			go("support", {"id": parts[1]} if parts.size() > 1 else {})
 		_:

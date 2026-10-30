@@ -458,14 +458,15 @@ func _audit() -> void:
 	var page := _page_of("audit", rows)
 	var c := UI.card(_body, "Card", T.space("xs"))
 	_pager(_body, "audit", rows.size())
+	# Two lines per entry (action + time, then who → what), each clipped with "…": fixed-width columns
+	# overflowed phones and squeezed the last column to one letter per line.
 	for i in page.size():
 		var a: Dictionary = page[i]
-		var row := UI.hbox(c, T.space("md"))
-		var when := UI.label(row, UI.datetime(a.get("created")), "MonoLabel", false)
-		when.custom_minimum_size.x = 140
-		var act := UI.label(row, str(a.action), "StrongLabel", false)
-		act.custom_minimum_size.x = 150
-		UI.label(row, "%s → %s" % [_emails.get(str(a.actor), str(a.actor)), str(a.get("target", "")).left(24)], "MutedLabel")
+		var entry := UI.vbox(c, 2)
+		var top := UI.hbox(entry, T.space("md"))
+		UI.label_clip(top, str(a.action), "StrongLabel").size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UI.label(top, UI.datetime(a.get("created")), "MonoLabel", false)
+		UI.label_clip(entry, "%s → %s" % [_emails.get(str(a.actor), str(a.actor)), _emails.get(str(a.get("target", "")), str(a.get("target", "")))], "MutedLabel")
 
 
 
@@ -619,15 +620,11 @@ func _plans_form(parent: Node) -> void:
 	UI.label(c, "Mã gói chỉ gồm a–z, 0–9, - và _. Cần ít nhất một gói đang bán.", "MutedLabel")
 	var table := UI.vbox(c, T.space("sm"))
 	var rows: Array = []
-	var header := UI.hbox(table, T.space("sm"))
-	for h in [["Mã", 110], ["Tên gói", 0], ["Ngày", 90], ["Giá (đ)", 120], ["Nhãn", 110], ["Bán", 50], ["", 64]]:
-		var l := UI.label(header, h[0], "CaptionLabel", false)
-		if h[1] > 0:
-			l.custom_minimum_size.x = h[1]
-		else:
-			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# One small card per plan, three short lines (code + name, days + price, label + on sale + delete): a single
+	# 7-column row was ~550 wide and ran off phone screens.
 	var add_row := func(p: Dictionary) -> void:
-		var row := UI.hbox(table, T.space("sm"))
+		var item := UI.card(table, "CardInset", T.space("xs"))
+		var row := UI.hbox(item, T.space("sm"))
 		var id := LineEdit.new()
 		id.text = str(p.get("id", ""))
 		id.placeholder_text = "vd: week"
@@ -636,37 +633,43 @@ func _plans_form(parent: Node) -> void:
 		var nm := LineEdit.new()
 		nm.text = str(p.get("name", ""))
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.placeholder_text = "Tên gói"
 		nm.custom_minimum_size.y = UI.target_h(38)
 		row.add_child(nm)
+		row = UI.hbox(item, T.space("sm"))
 		var days := SpinBox.new()
 		days.min_value = 1
 		days.max_value = 365
 		days.value = int(p.get("days", 30))
-		days.custom_minimum_size.x = 90
+		days.suffix = "ngày"
+		days.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(days)
 		var price := SpinBox.new()
 		price.min_value = 0
 		price.max_value = 10000000
 		price.step = 500
 		price.value = int(p.get("price", 0))
-		price.custom_minimum_size.x = 120
+		price.suffix = "đ"
+		price.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(price)
+		row = UI.hbox(item, T.space("sm"))
 		var badge := LineEdit.new()
 		badge.text = str(p.get("badge", ""))
 		badge.max_length = 24
-		badge.custom_minimum_size = Vector2(110, UI.target_h(38))
+		badge.placeholder_text = "Nhãn (vd: Phổ biến)"
+		badge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		badge.custom_minimum_size.y = UI.target_h(38)
 		row.add_child(badge)
 		var active := CheckBox.new()
+		active.text = "Đang bán"
 		active.button_pressed = bool(p.get("active", true))
 		active.focus_mode = Control.FOCUS_NONE
-		active.custom_minimum_size.x = 50
 		row.add_child(active)
-		var entry := {"id": id, "name": nm, "days": days, "price": price, "badge": badge, "active": active, "node": row}
+		var entry := {"id": id, "name": nm, "days": days, "price": price, "badge": badge, "active": active, "node": item}
 		rows.append(entry)
-		var del := UI.button(row, "Xóa", func() -> void:
+		UI.button(row, "Xóa", func() -> void:
 			rows.erase(entry)
-			row.queue_free(), "DangerButton")
-		del.custom_minimum_size.x = 64
+			item.get_parent().queue_free(), "DangerButton")
 	for p in _settings.get("plans", []):
 		add_row.call(p)
 	var foot := UI.hbox(c, T.space("sm"))

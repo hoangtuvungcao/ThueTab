@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMedia } from '../hooks.js';
 import { LayoutGrid, FileCode, Wallet, Tag, LifeBuoy, Shield, Sun, Moon, LogOut, ChevronDown, UserRound, MonitorPlay, Menu, PanelLeftClose, PanelLeftOpen, Settings, Download, MessageCircle, Gift, Bell as BellIcon, CheckCheck, X as XIcon } from 'lucide-react';
-import { api, ago } from '../api.js';
+import { api, ago, serverNow } from '../api.js';
 import { NAV, USER_MENU, resolveTheme } from '../tokens.js';
 import { money } from '../api.js';
 import { useApp } from '../store.js';
+import { useToast } from './ui.jsx';
 
 // tokens.nav icon names → lucide components
 export const NAV_ICONS = { 'layout-grid': LayoutGrid, 'monitor-play': MonitorPlay, 'file-code': FileCode, wallet: Wallet, tag: Tag, 'life-buoy': LifeBuoy, shield: Shield, user: UserRound, settings: Settings, download: Download, 'message-circle': MessageCircle, gift: Gift };
@@ -79,6 +80,7 @@ function UserMenu() {
 // Notification bell: unread badge, list, mark read, follow the item's link ("/wallet", "/tabs/ID", "/support/ID").
 export function Bell() {
   const { notes, loadNotes, go, tabs, open } = useApp();
+  const toast = useToast();
   const [show, setShow] = useState(false);
   const ref = useRef(null);
   const panelRef = useRef(null);
@@ -101,9 +103,14 @@ export function Bell() {
     if (!link) return;
     const [page, id] = link.split('/');
     if (page === 'tabs' && id) {
+      // Old notifications can point at a tab that has since expired or been removed: say so instead of
+      // opening an empty game screen. Expired → straight to renewing it; removed → back to the tab list.
       go('tabs');
       const t = tabs?.find(x => x.id === id);
-      if (t) setTimeout(() => open('viewer', { tab: t }), 50);
+      if (!tabs) return;
+      if (!t) toast('Tab này đã bị xóa hoặc giải phóng nên không còn mở được.', 'info');
+      else if (t.expires <= serverNow()) { toast(`Tab "${t.name}" đã hết hạn — gia hạn để chơi tiếp.`, 'info'); setTimeout(() => open('renew', { tab: t }), 50); }
+      else setTimeout(() => open('viewer', { tab: t }), 50);
     } else go(link);
   };
   const unread = notes.unread || 0;
