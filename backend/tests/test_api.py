@@ -747,3 +747,11 @@ def test_jar_name_from_android_picker_and_rename():
     assert c.patch('/api/jars/'+jar['id'], json={'filename': 'NSO.JAR'}).json()['jar']['filename'] == 'NSO.jar'
     assert c.patch('/api/jars/'+jar['id'], json={'filename': ' .jar '}).status_code == 422
     assert client('admin@test.vn').patch('/api/jars/'+jar['id'], json={'filename': 'x'}).status_code == 404
+
+def test_same_jar_name_gets_number():
+    c=client()
+    a=c.post('/api/jars/upload', headers={'X-Filename': 'game.jar'}, content=make_jar()).json()['jar']
+    b=c.post('/api/jars/upload', headers={'X-Filename': 'game.jar.zip'}, content=make_jar('Manifest-Version: 1.0\nMIDlet-1: B,,x.B\n')).json()['jar']
+    assert (a['filename'], b['filename']) == ('game.jar', 'game (1).jar')
+    assert c.patch('/api/jars/'+a['id'], json={'filename': 'GAME (1).jar'}).json()['jar']['filename'] == 'GAME (1) (1).jar'
+    assert c.patch('/api/jars/'+a['id'], json={'filename': 'game.jar'}).json()['jar']['filename'] == 'game.jar'

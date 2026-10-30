@@ -462,7 +462,8 @@ static func pick_and_upload(app: Node, on_done: Callable = Callable()) -> void:
 	fd.access = FileDialog.ACCESS_FILESYSTEM
 	fd.use_native_dialog = true
 	fd.title = "Chọn file .jar"
-	fd.filters = PackedStringArray(["*.jar ; Java Archive"])
+	# Android's picker only offers files whose MIME type is listed: JARs are often x-java-archive or octet-stream.
+	fd.filters = PackedStringArray(["*.jar;Java Archive;application/java-archive,application/x-java-archive,application/octet-stream"])
 	app.add_child(fd)
 	fd.file_selected.connect(func(path: String) -> void:
 		fd.queue_free()
@@ -511,7 +512,10 @@ static func upload(app: Node, path: String) -> Dictionary:
 		return {}
 	var jar: Dictionary = r.data.get("jar", {})
 	var st := str(jar.get("status", "approved"))
-	app.toast("Đã tải lên %s (%s)." % [str(jar.get("filename", name)), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
+	if r.data.get("duplicate", false):
+		app.toast("File này đã có trong danh sách: %s." % str(jar.get("filename", name)))
+	else:
+		app.toast("Đã tải lên %s (%s)." % [str(jar.get("filename", name)), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
 	var rj: Dictionary = await app.api.request("/jars")
 	if rj.ok:
 		app.jars = rj.data

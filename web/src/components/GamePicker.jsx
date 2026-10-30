@@ -8,18 +8,23 @@ export const CUSTOM = 'custom-jar';
 export const sameChoice = (a, b) => (a.game || null) === (b.game || null) && (a.game !== CUSTOM || a.jar === b.jar);
 
 // Inline .jar upload used by the picker and the Jars page. Resolves to the new jar (or null).
+// Android pickers grey out files whose MIME type is not listed: JARs are often x-java-archive or octet-stream.
+export const JAR_ACCEPT = '.jar,application/java-archive,application/x-java-archive,application/octet-stream';
+
 export function useJarUpload(onDone) {
   const { config, refresh } = useApp();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const upload = async file => {
     if (!file) return null;
-    if (!file.name.toLowerCase().endsWith('.jar')) { toast('Chỉ chấp nhận file .jar.', 'error'); return null; }
+    // Phones may hand over a .jar as "game.jar.zip" or with no extension; the server checks the file itself.
+    if (/\.(apk|exe|zip|rar|7z)$/i.test(file.name) && !/\.jar\.zip$/i.test(file.name)) { toast('Chỉ chấp nhận file .jar.', 'error'); return null; }
     if (file.size > config.jar_max_mb * 1048576) { toast(`File vượt quá ${config.jar_max_mb} MB.`, 'error'); return null; }
     setBusy(true);
     try {
-      const { jar } = await uploadJar(file);
-      toast(jar.status === 'approved' ? `Đã tải lên ${jar.filename}.` : `Đã tải lên ${jar.filename}. Đang chờ quản trị viên duyệt.`, 'success');
+      const { jar, duplicate } = await uploadJar(file);
+      if (duplicate) toast(`File này đã có trong danh sách: ${jar.filename}.`, 'info');
+      else toast(jar.status === 'approved' ? `Đã tải lên ${jar.filename}.` : `Đã tải lên ${jar.filename}. Đang chờ quản trị viên duyệt.`, 'success');
       await refresh();
       onDone?.(jar);
       return jar;
@@ -63,7 +68,7 @@ export default function GamePicker({ value, onChange, jars, current, allowUpload
           <div className="picker-head">
             <span>File JAR của bạn</span>
             {allowUpload && <>
-              <input ref={input} type="file" accept=".jar,application/java-archive" hidden onChange={e => { upload(e.target.files[0]); e.target.value = ''; }} />
+              <input ref={input} type="file" accept={JAR_ACCEPT} hidden onChange={e => { upload(e.target.files[0]); e.target.value = ''; }} />
               <Button size="sm" icon={UploadCloud} loading={busy} onClick={() => input.current.click()}>Tải JAR mới</Button>
             </>}
           </div>

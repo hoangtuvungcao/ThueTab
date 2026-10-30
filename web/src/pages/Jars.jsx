@@ -4,7 +4,7 @@ import { api, fileSize, dateTime } from '../api.js';
 import { navLabel } from '../tokens.js';
 import { useApp } from '../store.js';
 import { Button, Card, Empty, JarBadge, PageHead, Alert, Modal, KindBadge, Skeleton, MAINT_HINT, Confirm } from '../components/ui.jsx';
-import { useJarUpload } from '../components/GamePicker.jsx';
+import { useJarUpload, JAR_ACCEPT } from '../components/GamePicker.jsx';
 import { Pager, usePaged } from '../components/DataTable.jsx';
 
 export default function Jars() {
@@ -30,7 +30,7 @@ export default function Jars() {
             <strong>Kéo thả file .jar vào đây</strong>
             <p className="muted">Tối đa {config.jar_max_mb} MB · J2ME hoặc Java PC · tự nhận loại game</p>
           </div>
-          <input ref={input} type="file" accept=".jar,application/java-archive" hidden onChange={e => { upload(e.target.files[0]); e.target.value = ''; }} />
+          <input ref={input} type="file" accept={JAR_ACCEPT} hidden onChange={e => { upload(e.target.files[0]); e.target.value = ''; }} />
           <Button variant="primary" icon={UploadCloud} loading={busy} disabled={maint} title={maint ? MAINT_HINT : undefined} onClick={() => input.current.click()}>Chọn file</Button>
         </div>
         <Alert kind="info" icon={ShieldCheck}>

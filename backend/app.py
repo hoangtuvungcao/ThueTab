@@ -469,7 +469,7 @@ async def upload_jar(req:Request,u=Depends(current)):
     jar_id = uid()
     (JAR_DIR / f"{jar_id}.jar").write_bytes(content)
     with tx() as s:
-        cjar = CustomJar(id=jar_id, user_id=u.id, filename=filename[:120], file_size=len(content), sha256=digest, kind=kind, midlet=midlet, screen=screen, status='approved' if JAR_AUTO_APPROVE or u.role=='admin' else 'pending')
+        cjar = CustomJar(id=jar_id, user_id=u.id, filename=unique_jar_name(s,u.id,filename), file_size=len(content), sha256=digest, kind=kind, midlet=midlet, screen=screen, status='approved' if JAR_AUTO_APPROVE or u.role=='admin' else 'pending')
         s.add(cjar); s.flush()
         audit(s,u.id,'jar.upload',jar_id)
         return {'ok':True,'jar':jar_dict(cjar)}
@@ -484,9 +484,16 @@ def jar_stem(raw:str)->str:
         name=unquote(name)
     name=re.split(r'[/\\:]',name)[-1]
     name=re.sub(r'[\x00-\x1f\x7f]','',name).strip()
+    name=re.sub(r'(?i)\.jar\.zip$','.jar',name)  # phones sometimes save a download as "game.jar.zip"
     if name.lower().endswith('.jar'): name=name[:-4].rstrip()
     return name[:115]
 def jar_name(raw:str)->str: return (jar_stem(raw) or 'custom')+'.jar'
+def unique_jar_name(s,user_id,name,skip=''):
+    # "game.jar" taken by another of the user's files -> "game (1).jar", "game (2).jar"…
+    taken={f.lower() for f in s.scalars(select(CustomJar.filename).where(CustomJar.user_id==user_id,CustomJar.id!=skip))}
+    stem,n=name[:-4],1
+    while name.lower() in taken: name=f'{stem} ({n}).jar'; n+=1
+    return name
 
 class JarRename(BaseModel): filename:str=Field(min_length=1,max_length=200)
 
@@ -497,7 +504,7 @@ def rename_jar(id:str,b:JarRename,u=Depends(current)):
         if not cjar: raise HTTPException(404, 'Không tìm thấy file JAR.')
         stem=jar_stem(b.filename)
         if not stem: raise HTTPException(422,'Tên file không được để trống.')
-        cjar.filename=stem+'.jar'
+        cjar.filename=unique_jar_name(s,u.id,stem+'.jar',skip=id)
         return {'ok':True,'jar':jar_dict(cjar)}
 
 @app.delete('/api/jars/{id}')
