@@ -284,7 +284,8 @@ export default function Viewer({ tab }) {
               <StateBadge state={state} /><KindBadge kind={kind} />
               {j2me && <span className="badge num" style={{ '--c': 'var(--muted)' }}>{screenId.replace('x', '×')}</span>}
               <span className={'live' + (streaming && !pending ? ' on' : '')} role="status">{status}</span>
-              {live && prefs.show_fps !== false && <span className="stream-meter num" title="FPS nhận được / độ trễ từ lúc bấm phím đến khung hình kế tiếp"><b>{info.fps}</b> FPS · <b>{info.ping || '—'}</b> ms</span>}
+              {/* Only while the live stream runs: before that the picture is a still and the status says why. */}
+              {streaming && prefs.show_fps !== false && <span className="stream-meter num" title="FPS nhận được / độ trễ khứ hồi tới máy chủ"><b>{info.fps}</b> FPS · <b>{info.ping || '—'}</b> ms</span>}
             </div>
           </div>
           <div className="v-head-actions">

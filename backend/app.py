@@ -725,6 +725,8 @@ def share_check(token,id):
         kind=j.kind if j else next((g.get('runtime','jar') for g in CATALOG if g['id']==t.game),'jar')
         return (kind,t.screen if kind=='midp' else '640x480',bool(x.can_control)),0
 
+VIEWER_SILENCE=20
+
 @app.websocket('/api/tabs/{id}/stream')
 async def stream_view(ws:WebSocket,id:str):
     share=ws.query_params.get('share','')
@@ -752,11 +754,16 @@ async def stream_view(ws:WebSocket,id:str):
     await ws.send_text(json.dumps({'type':'hello','kind':kind,'width':w,'height':h,'fps':viewer.fps}))
     pump=asyncio.create_task(viewer.pump())
     bucket,refill,checked=40.0,time.monotonic(),time.monotonic()
+    heard=time.monotonic()
     try:
         while True:
-            try: raw=await asyncio.wait_for(ws.receive_text(),timeout=10)
+            try: raw=await asyncio.wait_for(ws.receive_text(),timeout=5)
             except asyncio.TimeoutError: raw=None
             t=time.monotonic()
+            if raw is not None: heard=t
+            # Clients ping every 2-3 s. Silence means a dead connection (phone locked, network switched): free
+            # the viewer slot instead of streaming into it until TCP gives up, which can take minutes.
+            elif t-heard>VIEWER_SILENCE: await ws.close(code=4408); break
             if t-checked>10:
                 checked=t
                 if (await run_in_threadpool(check))[1]: await ws.close(code=4409); break

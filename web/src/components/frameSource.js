@@ -101,7 +101,8 @@ export function useTabStream(tabId, { fps, enabled, share }) {
 
     const connect = async () => {
       const h264 = !videoBroken && await videoSupport;
-      if (!alive) return;
+      // Hidden page (phone locked, other tab): no socket; onVisible reconnects.
+      if (!alive || document.hidden) return;
       closeDecoder();
       // Never two sockets at once: both would feed the same decoder (double frame count, corrupted picture).
       const prev = wsRef.current;
@@ -148,9 +149,21 @@ export function useTabStream(tabId, { fps, enabled, share }) {
         retryTimer = setTimeout(connect, wait);
       };
     };
+    // A locked phone keeps its socket open but stops reading it: the server would stream into it and the tab's
+    // viewer slots fill up. Close while hidden, reconnect when the page is shown again.
+    const onVisible = () => {
+      const ws = wsRef.current;
+      if (document.hidden) {
+        clearTimeout(retryTimer);
+        if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(1000); wsRef.current = null; }
+        closeDecoder();
+      } else if (!ws) { retry = 0; clearTimeout(retryTimer); connect(); }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     connect();
     return () => {
       alive = false;
+      document.removeEventListener('visibilitychange', onVisible);
       clearInterval(meter);
       clearTimeout(retryTimer);
       cancelAnimationFrame(raf);
