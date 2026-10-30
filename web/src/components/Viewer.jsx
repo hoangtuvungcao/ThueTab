@@ -169,6 +169,9 @@ export default function Viewer({ tab }) {
     setPanel(null);
     if (!(await changeScreen(act, tab, id))) setPending(null);
   }, [screenId, tab.id]);
+  // A new screen size restarts the game (J2ME reads its size once, at start): taps ask first.
+  const [ask, setAsk] = useState(null);
+  const askRotate = id => { if (id && id !== screenId) { setPanel(null); setAsk(id); } };
   useEffect(() => {
     if (!pending) return;
     const [pw, ph] = screenDims(pending);
@@ -246,8 +249,8 @@ export default function Viewer({ tab }) {
 
   const screenPanel = (
     <div className="v-pop" role="dialog" aria-label="Màn hình">
-      <ScreenPicker screens={config.screens} value={screenId} onChange={rotate} compact />
-      <Switch label="Tự xoay theo thiết bị" desc="Đổi dọc/ngang khi bạn xoay điện thoại." checked={auto} onChange={toggleAuto} />
+      <ScreenPicker screens={config.screens} value={screenId} onChange={askRotate} compact />
+      <Switch label="Tự xoay theo thiết bị" desc="Đổi dọc/ngang khi bạn xoay điện thoại — mỗi lần đổi game khởi động lại." checked={auto} onChange={toggleAuto} />
       <Switch label="Lấp đầy màn hình" desc="Kéo giãn hình game phủ kín màn hình (không giữ tỷ lệ)." checked={stretch} onChange={toggleStretch} />
     </div>
   );
@@ -307,11 +310,19 @@ export default function Viewer({ tab }) {
             {live && pending && <div className="screen-msg"><RotateCw size={28} className="spin" aria-hidden /><p>Đang xoay màn hình sang {pending.replace('x', '×')}…</p></div>}
             {live && !pending && info.hasFrame && info.phase === 'reconnecting' && <span className="screen-banner">{info.message}</span>}
           </Screen>
-          {mismatch && !auto && !pending && !hintOff ? (
+          {ask && !pending ? (
+            <div className="v-chips">
+              <span className="v-chip">
+                <span className="v-chip-main">Đổi sang {ask.replace('x', '×')} sẽ khởi động lại game.</span>
+                <button type="button" className="v-chip-main" onClick={() => { const id = ask; setAsk(null); rotate(id); }}><RotateCw size={14} aria-hidden /> Đổi</button>
+                <button type="button" className="v-chip-x" aria-label="Hủy đổi màn hình" onClick={() => setAsk(null)}><X size={14} /></button>
+              </span>
+            </div>
+          ) : mismatch && !auto && !pending && !hintOff ? (
             <div className="v-chips">
               {mismatch && !auto && !pending && !hintOff && (
                 <span className="v-chip">
-                  <button type="button" className="v-chip-main" onClick={() => rotate(rotatedScreen(config.screens, screenId, deviceOrient))}>
+                  <button type="button" className="v-chip-main" onClick={() => askRotate(rotatedScreen(config.screens, screenId, deviceOrient))}>
                     <RotateCw size={14} aria-hidden /> Chuyển sang màn {deviceLandscape ? 'ngang' : 'dọc'}</button>
                   <button type="button" className="v-chip-x" aria-label="Ẩn gợi ý" onClick={() => setHintOff(true)}><X size={14} /></button>
                 </span>

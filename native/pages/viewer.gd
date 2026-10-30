@@ -245,7 +245,7 @@ func _render_head() -> void:
 		if _rotatable(t):
 			items.append(["Màn hình (%s)…" % str(Actions.screen_info(app, str(t.get("screen", ""))).label), func() -> void:
 				Actions.pick_screen(app, t, _begin_rotation)])
-			items.append(["Tự xoay theo thiết bị", [func() -> void:
+			items.append(["Tự xoay theo thiết bị (đổi là game khởi động lại)", [func() -> void:
 				app.set_pref("auto_rotate", not bool(app.pref("auto_rotate", false)))
 				_render_rotation_hint(tab()), bool(app.pref("auto_rotate", false))]])
 		if app.compact:
@@ -305,12 +305,17 @@ func _render_rotation_hint(t: Dictionary) -> void:
 			_auto_timer.start()
 		return
 	var to_land := _device_landscape()
-	var pill := UI.button(_rot_slot, "↻ Màn ngang" if to_land else "↻ Màn dọc", func() -> void:
-		var r: Dictionary = await Actions.set_screen(app, tab(), target)
-		if r.ok:
-			_begin_rotation(target), "ChipButton")
+	var pill := UI.button(_rot_slot, "↻ Màn ngang" if to_land else "↻ Màn dọc", func() -> void: _ask_rotate(target), "ChipButton")
 	pill.tooltip_text = "Cửa sổ đang %s — chuyển game sang màn %s. Bật \"Tự xoay theo thiết bị\" trong menu ⋯ để tự động." % ["ngang" if to_land else "dọc", "ngang" if to_land else "dọc"]
 	pill.custom_minimum_size.y = UI.target_h(32)
+
+
+## A new screen size restarts the game (J2ME reads its size once, at start): taps ask first.
+func _ask_rotate(target: String) -> void:
+	app.confirm("Đổi màn hình game?", "Đổi sang %s sẽ khởi động lại game. Thời hạn tab giữ nguyên." % str(Actions.screen_info(app, target).label), "Đổi & khởi động lại", func() -> void:
+		var r: Dictionary = await Actions.set_screen(app, tab(), target)
+		if r.ok:
+			_begin_rotation(target))
 
 
 func _auto_rotate() -> void:
@@ -944,7 +949,7 @@ func _render_pad_top() -> void:
 	items.append(["Lấp đầy màn hình", [_toggle_stretch, _stretch()]])
 	if _rotatable(t):
 		items.append(["Màn hình…", func() -> void: Actions.pick_screen(app, tab(), _begin_rotation)])
-		items.append(["Tự xoay theo thiết bị", [func() -> void:
+		items.append(["Tự xoay theo thiết bị (đổi là game khởi động lại)", [func() -> void:
 			app.set_pref("auto_rotate", not bool(app.pref("auto_rotate", false)))
 			_render_rotation_hint(tab()), bool(app.pref("auto_rotate", false))]])
 	items.append(["Gõ chữ…", _text_dialog])
