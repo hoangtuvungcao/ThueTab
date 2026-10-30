@@ -437,7 +437,7 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
 .text-send { display: flex; flex-direction: column; gap: 6px; }
 .text-send label { font-size: var(--fs-sm); font-weight: 600; }
 .text-send input { height: 36px; }
-.stream-meter { font: 600 var(--fs-xs)/1 var(--font-display); color: var(--muted); padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); font-variant-numeric: tabular-nums; }
+.stream-meter { font: 600 var(--fs-xs)/1 var(--font-display); color: var(--muted); padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 .stream-meter b { color: var(--ink); }
 
 /* ---------- multi-screen wall ---------- */
