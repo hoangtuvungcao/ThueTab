@@ -211,7 +211,8 @@ func _meter(parent: Node, title: String, pct: int, detail: String) -> void:
 	bg.bg_color = T.color("surface_2")
 	bg.set_corner_radius_all(4)
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = T.color("danger") if pct >= 90 else (T.color("warn") if pct >= 70 else T.color("accent"))
+	# Green (not the accent colour, which can be red/pink) under 70 %.
+	fill.bg_color = T.color("danger") if pct >= 90 else (T.color("warn") if pct >= 70 else T.color("success"))
 	fill.set_corner_radius_all(4)
 	bar.add_theme_stylebox_override("background", bg)
 	bar.add_theme_stylebox_override("fill", fill)
@@ -245,7 +246,8 @@ func _render_system(d: Dictionary) -> void:
 		var load: Array = s.get("load", [])
 		_meter(meters, "CPU · %d nhân" % int(s.cores), int(round(float(s.get("cpu", 0)))), "Tải " + " / ".join(load.map(func(x: Variant) -> String: return "%.2f" % float(x))))
 		var mt := float(s.get("mem_total_mb", 0))
-		_meter(meters, "RAM", int(round(float(s.get("mem_used_mb", 0)) * 100.0 / maxf(mt, 1.0))), "%s / %s" % [_size_mb(s.get("mem_used_mb", 0)), _size_mb(mt)])
+		var swap_txt := " · swap %s / %s" % [_size_mb(s.get("swap_used_mb", 0)), _size_mb(s.get("swap_total_mb", 0))] if float(s.get("swap_total_mb", 0)) > 0 else ""
+		_meter(meters, "RAM", int(round(float(s.get("mem_used_mb", 0)) * 100.0 / maxf(mt, 1.0))), "%s / %s%s" % [_size_mb(s.get("mem_used_mb", 0)), _size_mb(mt), swap_txt])
 		var disk: Variant = s.get("disk")
 		if disk is Dictionary:
 			var dt := float(disk.total_mb)

@@ -16,8 +16,9 @@ const uptime = s => {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d ? `${d} ngày ${h} giờ` : h ? `${h} giờ ${m} phút` : `${m} phút`;
 };
-// Green under 70 %, amber under 90 %, red above: the same thresholds for CPU, RAM and disk.
-const tone = p => (p >= 90 ? 'danger' : p >= 70 ? 'warn' : 'accent');
+// Green under 70 %, amber under 90 %, red above: the same thresholds for CPU, RAM and disk. Green, not the accent:
+// with a red/pink accent theme a 4 % bar would look like an alarm.
+const tone = p => (p >= 90 ? 'danger' : p >= 70 ? 'warn' : 'success');
 
 function Meter({ icon: Icon, label, value, detail }) {
   const p = Math.min(100, Math.max(0, value));
@@ -47,7 +48,7 @@ function WorkerCard({ w }) {
           <div className="sys-meters">
             <Meter icon={Cpu} label={`CPU · ${s.cores} nhân`} value={Math.round(s.cpu || 0)} detail={`Tải ${(s.load || []).join(' / ')}`} />
             <Meter icon={MemoryStick} label="RAM" value={pct(s.mem_used_mb, s.mem_total_mb)}
-              detail={`${mb(s.mem_used_mb)} / ${mb(s.mem_total_mb)}${s.swap_total_mb ? ` · swap ${mb(s.swap_used_mb)}` : ''}`} />
+              detail={`${mb(s.mem_used_mb)} / ${mb(s.mem_total_mb)}${s.swap_total_mb ? ` · swap ${mb(s.swap_used_mb)} / ${mb(s.swap_total_mb)}` : ''}`} />
             {s.disk && <Meter icon={HardDrive} label="Ổ đĩa (dữ liệu)" value={pct(s.disk.used_mb, s.disk.total_mb)}
               detail={`${mb(s.disk.used_mb)} / ${mb(s.disk.total_mb)} · còn ${mb(s.disk.total_mb - s.disk.used_mb)}`} />}
             {s.docker_disk && s.docker_disk.total_mb !== s.disk?.total_mb && <Meter icon={HardDrive} label="Ổ đĩa Docker"
