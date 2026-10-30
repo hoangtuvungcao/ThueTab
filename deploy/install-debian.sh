@@ -209,6 +209,8 @@ if [ -n "$CF_TOKEN" ]; then
   printf '[Service]\nEnvironment=TUNNEL_TRANSPORT_PROTOCOL=http2\n' > /etc/systemd/system/cloudflared.service.d/http2.conf
   systemctl daemon-reload
   cloudflared service install "$CF_TOKEN" >/dev/null 2>&1 || true
+  # Recent cloudflared units read --token-file; "service install" skips writing it when a unit already exists.
+  mkdir -p /etc/cloudflared && (umask 077; printf '%s' "$CF_TOKEN" > /etc/cloudflared/token)
   systemctl restart cloudflared
 fi
 
