@@ -172,15 +172,15 @@ class Streamer:
             # H.264 sends only what changed between frames: ~10x less data than JPEG, so 30/60 fps fits a slow uplink.
             # The minimal FFmpeg has no assembly: its fast RGB->YUV path garbles chroma (green/magenta stripes), so
             # convert with the exact path. Baseline + zerolatency: no B-frames or lookahead (no added delay), decodable by every browser.
-            # One keyframe per second lets a viewer that fell behind resynchronise quickly; aud=1 marks frame
+            # Two keyframes per second let a viewer that fell behind (or just joined) resynchronise within ~0.5 s; aud=1 marks frame
             # boundaries so the stream can be cut into frames below. "superfast" (not ultrafast) keeps motion
             # search and the deblocking filter: at the same bitrate the picture is far sharper, for a few % CPU
             # at these small game resolutions.
             kbps=STREAM_KBPS
             return ['sh','-c',grab+'-vf scale=flags=accurate_rnd+full_chroma_int,format=yuv420p '
                     '-c:v libx264 -preset superfast -tune zerolatency -profile:v baseline '
-                    '-g "$1" -crf 21 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
-                    self.pidfile,str(self.fps),size,origin,str(kbps),str(kbps//2)]
+                    '-g "$6" -crf 21 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
+                    self.pidfile,str(self.fps),size,origin,str(kbps),str(kbps//2),str(max(self.fps//2,5))]
         if self.fps<=THUMB_FPS:
             # Nobody watches live, only thumbnails: small tiles.
             return ['sh','-c',grab+'-vf "$4" -f mjpeg -q:v 8 -flush_packets 1 -',self.pidfile,str(self.fps),size,origin,THUMB_VF]

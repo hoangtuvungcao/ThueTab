@@ -13,7 +13,11 @@ else
 fi
 Xvfb :99 -screen 0 "${XW}x${XH}x${DEPTH}" -nolisten tcp -nocursor 2>/dev/null &
 XVFB_PID=$!
-trap 'kill "$XVFB_PID" 2>/dev/null || true' EXIT TERM INT
+GAME_PID=""
+trap 'kill "$XVFB_PID" 2>/dev/null || true' EXIT
+# The game runs in the background + wait, so a stop signal is handled at once (sh defers traps until a
+# foreground command ends).
+trap 'kill $GAME_PID "$XVFB_PID" 2>/dev/null || true; exit 0' TERM INT
 sleep 1
 # Small-footprint JVM: serial GC, client compiler only, capped heap/metaspace/code cache.
 JAVA_OPTS="-Xms16m -Xmx128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 -Xss256k
@@ -32,9 +36,19 @@ if [ "${GAME_KIND:-jar}" = "midp" ]; then
   cp /opt/emu/normal.png "$DEV/normal.png"
   CP="$EMU/microemulator.jar:$EMU/nokiaui.jar:$EMU/jsr135.jar:/tmp/device"
   DEVICE=thuetab/device.xml
+  # --quit: when the game exits ("Thoát"), the emulator exits too instead of showing its empty launcher
+  # ("[no midlets]"); the loop below starts the game again a second later.
   if [ -n "${MIDLET_CLASS:-}" ]; then
-    exec nice -n 10 java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" --appclasspath /opt/game/game.jar "$MIDLET_CLASS"
+    set -- -cp "$CP" org.microemu.app.Main --device "$DEVICE" --quit --appclasspath /opt/game/game.jar "$MIDLET_CLASS"
+  else
+    set -- -cp "$CP" org.microemu.app.Main --device "$DEVICE" --quit /opt/game/game.jar
   fi
-  exec nice -n 10 java $JAVA_OPTS -cp "$CP" org.microemu.app.Main --device "$DEVICE" /opt/game/game.jar
+else
+  set -- -jar /opt/game/game.jar
 fi
-exec nice -n 10 java $JAVA_OPTS -jar /opt/game/game.jar
+while :; do
+  nice -n 10 java $JAVA_OPTS "$@" &
+  GAME_PID=$!
+  wait "$GAME_PID" || true
+  sleep 1
+done

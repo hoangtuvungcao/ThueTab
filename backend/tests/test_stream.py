@@ -92,7 +92,7 @@ def test_viewer_at_30_keeps_up_with_a_60_fps_stream():
         hub = Hub()
         owner, share = Viewer(WS(), 60, 'h264', ack=True), Viewer(WS(), 30, 'h264', ack=True)
         hub.add_viewer('t', owner); hub.add_viewer('t', share)
-        assert share.rate == 60 and share.window() >= 20
+        assert share.rate == 60 and share.window() >= 12  # 0.2 s of a 60 fps stream
         pumps = [asyncio.create_task(v.pump()) for v in (owner, share)]
         hub.publish('t', KEY)
         for _ in range(119):  # two seconds at 60 fps; acks arrive ~4 frames late

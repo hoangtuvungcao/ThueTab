@@ -41,7 +41,6 @@ export function useTabStream(tabId, { fps, enabled, share }) {
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
   const fpsRef = useRef(fps);
-  const pingStart = useRef(0);
   const [info, setInfo] = useState({ phase: 'connecting', message: '', width: 0, height: 0, kind: null, fps: 0, ping: 0, hasFrame: false });
   const patch = p => setInfo(i => ({ ...i, ...p }));
 
@@ -111,6 +110,10 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       // Share links authenticate with ?share=; signed-in viewers in token mode send ['bearer', token] as subprotocols.
       const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}&ack=1${h264 ? '&codec=h264' : ''}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
       ws.binaryType = 'arraybuffer';
+      // Latency: a ping every 2 s (the server answers with a pong carrying the same timestamp).
+      const pinger = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping', t: performance.now() })); }, 2000);
+      ws.addEventListener('open', () => ws.send(JSON.stringify({ type: 'ping', t: performance.now() })));
+      ws.addEventListener('close', () => clearInterval(pinger));
       wsRef.current = ws;
       ws.onmessage = e => {
         if (typeof e.data === 'string') {
@@ -118,12 +121,16 @@ export function useTabStream(tabId, { fps, enabled, share }) {
           try { m = JSON.parse(e.data); } catch { return; }
           if (m.type === 'hello') { retry = 0; patch({ phase: hasFrame ? 'live' : 'waiting', kind: m.kind, width: m.width, height: m.height, message: '' }); }
           else if (m.type === 'error') patch({ error: { detail: m.detail || 'Thao tác không hợp lệ.', at: Date.now() } });
+          else if (m.type === 'pong' && typeof m.t === 'number') {
+            // Round trip through the tunnel, smoothed so one slow packet doesn't flash a huge number.
+            const rtt = performance.now() - m.t;
+            lastPing = Math.round(lastPing ? lastPing * 0.5 + rtt * 0.5 : rtt);
+          }
           return;
         }
         // Acknowledge each frame: the server keeps only a few in flight, so a slow link never builds up delay.
         if (ws.readyState === WebSocket.OPEN) ws.send(ACK);
         stamps.push(performance.now());
-        if (pingStart.current) { lastPing = Math.round(performance.now() - pingStart.current); pingStart.current = 0; }
         const bytes = new Uint8Array(e.data);
         if (bytes[0] === 0xff && bytes[1] === 0xd8) {
           latest = new Blob([bytes], { type: 'image/jpeg' });
@@ -167,7 +174,6 @@ export function useTabStream(tabId, { fps, enabled, share }) {
     const via = (msg, fallback) => {
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
-        pingStart.current = performance.now();
         ws.send(JSON.stringify(msg));
         return Promise.resolve();
       }

@@ -48,7 +48,7 @@ var _next_ping: float = 0.0
 var _dec: Object  # H264Decoder for the current connection, or null (JPEG)
 var _video_errors: int = 0
 var _video_off: bool = false  # decoder missing or failing: JPEG for the rest of this viewer's life
-const PING_EVERY := 3.0
+const PING_EVERY := 2.0
 const ACK := "{\"type\":\"ack\"}"
 
 

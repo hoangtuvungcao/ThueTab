@@ -45,8 +45,9 @@ class Viewer:
         self.room.set()
 
     def window(self):
-        # JPEG: 2 frames in flight (frames can be skipped). Video: ~0.35 s of the stream.
-        return 2 if self.codec != 'h264' else max(6, self.rate * 35 // 100)
+        # JPEG: 2 frames in flight (frames can be skipped). Video: ~0.2 s of the stream — enough to cover the
+        # tunnel's round trip at full rate, small enough that what the player sees is never far behind.
+        return 2 if self.codec != 'h264' else max(6, self.rate // 5)
 
     def acked(self):
         self.inflight = max(0, self.inflight - 1)
