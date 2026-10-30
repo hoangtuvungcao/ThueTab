@@ -185,7 +185,8 @@ export function Topbar({ go }) {
 // Mobile tab bar: the first four nav items, everything else (and account/logout) behind "Thêm".
 const BAR_ITEMS = 4;
 export function BottomNav({ route }) {
-  const { user, logout, go, config } = useApp();
+  const { user, logout, go, config, theme, toggleTheme } = useApp();
+  const dark = resolveTheme(theme) === 'dark';
   const [more, setMore] = useState(false);
   const items = navItems(user);
   const main = items.slice(0, BAR_ITEMS), rest = items.slice(BAR_ITEMS);
@@ -216,6 +217,8 @@ export function BottomNav({ route }) {
               const I = NAV_ICONS[n.icon] || UserRound;
               return <button key={n.id} type="button" className={'sheet-item' + (route === n.id ? ' on' : '')} onClick={() => pick(n.id)}><I size={18} aria-hidden /> {n.label}</button>;
             })}
+            {/* The header has no room for the theme switch on phones: it lives here (and in Cài đặt). */}
+            <button type="button" className="sheet-item" onClick={toggleTheme}>{dark ? <Sun size={18} aria-hidden /> : <Moon size={18} aria-hidden />} {dark ? 'Giao diện sáng' : 'Giao diện tối'}</button>
             <button type="button" className="sheet-item" onClick={() => { setMore(false); logout(); }}><LogOut size={18} aria-hidden /> Đăng xuất</button>
           </div>
         </div>
