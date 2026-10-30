@@ -106,6 +106,15 @@ class Hub:
         """Tabs whose viewers all decode H.264; the others (native app, older browsers) get JPEG."""
         return [tab for tab, vs in list(self.viewers.items()) if vs and all(v.codec == 'h264' for v in list(vs))]
 
+    def thumbs_wanted(self):
+        """Tabs whose thumbnail (tab card, multi-screen wall) is on someone's screen."""
+        t = time.monotonic()
+        return [tab for tab, seen in list(self.thumb_seen.items()) if t - seen < THUMB_WINDOW]
+
+    def set_thumb(self, tab, jpeg):
+        """Thumbnail snapshot taken while the live stream is video: kept for /frame, never sent to viewers."""
+        self.latest[tab] = (jpeg, time.monotonic())
+
     def logs_wanted(self):
         t = time.monotonic()
         return [tab for tab, seen in list(self.log_seen.items()) if t - seen < LOG_WINDOW]

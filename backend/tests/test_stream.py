@@ -107,3 +107,15 @@ def test_viewer_at_30_keeps_up_with_a_60_fps_stream():
         for p in pumps: p.cancel()
 
     asyncio.run(run())
+
+
+
+def test_thumbnail_snapshot_never_reaches_video_viewers():
+    hub = Hub()
+    v = Viewer(None, 30, 'h264')
+    hub.add_viewer('t', v)
+    hub.publish('t', KEY)
+    hub.set_thumb('t', JPEG)
+    assert hub.recent('t') == JPEG and frames(v) == [KEY]
+    hub.thumb_seen['t'] = __import__('time').monotonic()
+    assert hub.thumbs_wanted() == ['t']

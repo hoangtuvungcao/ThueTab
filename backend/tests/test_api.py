@@ -644,3 +644,18 @@ def test_api_host_forwards_browser_links_to_web():
     r=TestClient(app).get('/')
     assert r.status_code==200 and 'location.replace' in r.text and m.ORIGINS[0] in r.text
     assert TestClient(app).get('/api/nope').status_code==404
+
+
+def test_worker_jpeg_snapshot_serves_thumbnail():
+    # While the live view is H.264 the worker uploads JPEG snapshots; /frame serves them to tab cards / the wall.
+    from PIL import Image as PImage
+    a=client()
+    t=rent(a).json()
+    buf=io.BytesIO();PImage.new('RGB',(24,32),(200,10,10)).save(buf,'JPEG');jpeg=buf.getvalue()
+    w=TestClient(app);w.headers['Authorization']='Bearer '+os.environ['WORKER_TOKEN']
+    assert w.put('/api/internal/frames/'+t['id'],content=jpeg).status_code==200
+    r=a.get('/api/tabs/'+t['id']+'/frame')
+    assert r.status_code==200 and r.headers['content-type']=='image/jpeg' and r.content==jpeg
+    assert w.put('/api/internal/frames/'+t['id'],content=b'\xff\xd8\xff'+b'junk').status_code==422
+    hb=w.post('/api/internal/heartbeat',json={'id':'local-1','memory_mb':0,'statuses':{}}).json()
+    assert t['id'] in hb['thumbs']

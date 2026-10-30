@@ -144,6 +144,8 @@ class InputPipe:
         except Exception: pass
 
 AUD=b'\x00\x00\x00\x01\x09'  # H.264 access unit delimiter NAL
+THUMBS=set()  # tabs whose thumbnail someone is looking at (from the heartbeat)
+THUMB_EVERY=2.0
 
 class Streamer:
     """Live MJPEG from ffmpeg x11grab inside the tab's container, relayed to the API over a WebSocket.
@@ -198,6 +200,8 @@ class Streamer:
                     container=self.container=docker_api.containers.get(name)
                     logging.info('Stream %s: %s fps %s',self.t['id'][:8],self.fps,self.codec)
                     threading.Thread(target=self.inputs,args=(ws,container,docker_api,name),daemon=True).start()
+                    if self.codec=='h264':
+                        threading.Thread(target=self.thumbs,args=(container,),daemon=True).start()
                     exec_id=docker_api.api.exec_create(name,self.ffmpeg(),environment={'DISPLAY':':99'})['Id']
                     buf=b''
                     for out,_ in docker_api.api.exec_start(exec_id,stream=True,demux=True):
@@ -224,6 +228,20 @@ class Streamer:
             if self.container: self.kill_ffmpeg(self.container)
             self.stop.wait(2)
         docker_api.close()
+
+    def thumbs(self,container):
+        """While the live view is video, thumbnails (tab cards, wall) get a JPEG snapshot every 2 s — only when
+        someone is looking at them. The snapshot never enters the video stream."""
+        midp=self.t.get('kind')=='midp'
+        size,origin=(screen(self.t),f':99.0+{SCREEN_ORIGIN[0]},{SCREEN_ORIGIN[1]}') if midp else ('640x480',':99.0')
+        while not self.stop.wait(THUMB_EVERY):
+            if self.t['id'] not in THUMBS: continue
+            try:
+                r=container.exec_run(['ffmpeg','-loglevel','error','-f','x11grab','-draw_mouse','0','-video_size',size,'-i',origin,
+                                      '-frames:v','1','-f','mjpeg','-q:v','7','-'],environment={'DISPLAY':':99'},demux=True)
+                jpeg=r.output[0] or b''
+                if jpeg[:3]==b'\xff\xd8\xff': http.put('/api/internal/frames/'+self.t['id'],content=jpeg)
+            except Exception: pass
 
     def inputs(self,ws,container,docker_api,name):
         try: pipe=InputPipe(docker_api,name)
@@ -287,6 +305,7 @@ def main():
                         http.put('/api/internal/logs/'+id,content=c.logs(tail=80,stdout=True,stderr=True)[-16000:],headers={'Content-Type':'text/plain'})
             running={k:v for k,v in desired.items() if existing.get(k) and existing[k].status=='running' and existing[k].labels.get('thuetab.rev')==revision(v)
                      and tick-started_at.get(k,-99)>SETTLE_SECONDS}
+            THUMBS.clear();THUMBS.update(payload.get('thumbs',[]))
             sync_streams(payload.get('watch',{}),running,set(payload.get('video',[])))
             for cmd in payload['commands']:
                 if cmd['tab_id'] in desired: send_input(client.containers.get('thuetab-'+cmd['tab_id']),desired[cmd['tab_id']],cmd)

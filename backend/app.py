@@ -1339,7 +1339,7 @@ def heartbeat(b:Report):
             return {**internal_tab(t),'kind':j.kind if j else next((g.get('runtime','jar') for g in CATALOG if g['id']==t.game),'jar'),'midlet':j.midlet if j else ''}
         watch=hub.watch()
         return {'tabs':[runtime(t) for t in live], 'commands':commands, 'lease_seconds':15, 'watch':{k:v for k,v in watch.items() if k in ids},'video':[k for k in hub.video() if k in ids],
-                'logs':[k for k in hub.logs_wanted() if k in ids]}
+                'logs':[k for k in hub.logs_wanted() if k in ids],'thumbs':[k for k in hub.thumbs_wanted() if k in ids]}
 @app.put('/api/internal/frames/{id}',dependencies=[Depends(worker_auth)])
 async def put_frame(id:str,req:Request):
     if not re.fullmatch('[a-f0-9]{24}',id): raise HTTPException(422,'Invalid id')
@@ -1348,6 +1348,14 @@ async def put_frame(id:str,req:Request):
         if not t or t.expires<=now(): raise HTTPException(404,'Inactive tab')
     data=await req.body()
     if len(data)>500000: raise HTTPException(413,'Frame too large')
+    if data[:3]==b'\xff\xd8\xff':
+        # JPEG snapshot for thumbnails while the tab streams H.264 (held in memory, served by /frame).
+        try:
+            im=Image.open(io.BytesIO(data))
+            if im.format!='JPEG' or im.width>1024 or im.height>1024: raise ValueError()
+        except Exception: raise HTTPException(422,'Invalid JPEG')
+        hub.set_thumb(id,data)
+        return {'ok':True}
     try:
         im=Image.open(io.BytesIO(data))
         if im.format!='PNG' or im.width>1024 or im.height>1024: raise ValueError()
