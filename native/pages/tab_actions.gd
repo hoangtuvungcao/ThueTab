@@ -184,7 +184,7 @@ static func share_dialog(app: Node, tab: Dictionary) -> void:
 	var foot: HBoxContainer = app.modal_footer()
 	UI.button(foot, "Đóng", app.close_modal, "GhostButton")
 	var create := UI.button(foot, "Tạo liên kết", Callable(), "PrimaryButton")
-	create.pressed.connect(func() -> void:
+	UI.on_press(create, func() -> void:
 		create.disabled = true
 		var r: Dictionary = await app.api.request("/tabs/%s/shares" % str(tab.id), Api.POST,
 			{"can_control": mode.selected == 1, "hours": hours[dur.selected], "label": label.text.strip_edges()})
@@ -608,7 +608,7 @@ static func change_game(app: Node, tab: Dictionary) -> void:
 		save.disabled = state.game == "" or (state.game == "custom-jar" and state.jar == "") or (state.game == current.game and state.jar == current.jar)
 	game_picker(app, picker, state, update)
 	update.call()
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var data := {"game": state.game}
 		if state.game == "custom-jar":
 			data["custom_jar_id"] = state.jar
@@ -729,7 +729,7 @@ static func rent(app: Node, preset_jar: String = "") -> void:
 
 	UI.button(actions, "Hủy", app.close_modal, "GhostButton")
 	actions.add_child(submit)
-	submit.pressed.connect(func() -> void:
+	UI.on_press(submit, func() -> void:
 		var tab_name := name_input.text.strip_edges()
 		if tab_name.is_empty():
 			tab_name = "Tab %d" % (app.tabs.size() + 1)

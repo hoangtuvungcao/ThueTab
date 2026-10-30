@@ -36,7 +36,9 @@ def client(email='alice@test.vn'):
     c.cookies.clear();c.headers['Authorization']='Bearer '+r.json()['token']
     return c
 
-def rent(c,**kwargs): return c.post('/api/tabs',json={'name':'Tab test','game':'java-demo','plan':'month',**kwargs})
+_rent_n=iter(range(1,10**6))
+# Each rental gets its own name: an identical rental within 5 s is rejected as a double click.
+def rent(c,**kwargs): return c.post('/api/tabs',json={'name':'Tab test','game':'java-demo','plan':'month',**kwargs} if 'name' in kwargs else {'name':f'Tab test {next(_rent_n)}','game':'java-demo','plan':'month',**kwargs})
 
 def test_ownership_and_admin():
     a=client();b=client('bob@test.vn');ad=client('admin@test.vn')
@@ -491,7 +493,7 @@ def test_share_link_view_and_control():
     view=a.post('/api/tabs/'+tab['id']+'/shares',json={'hours':2,'label':'bạn'}).json()
     ctl=a.post('/api/tabs/'+tab['id']+'/shares',json={'can_control':True}).json()
     pub=TestClient(app).get('/api/share/'+view['token']).json()
-    assert pub['name']=='Tab test' and pub['can_control'] is False and 'user_id' not in pub
+    assert pub['name'].startswith('Tab test') and pub['can_control'] is False and 'user_id' not in pub
     c=TestClient(app)
     with c.websocket_connect(f"/api/tabs/{tab['id']}/stream?share={view['token']}") as ws:
         assert json.loads(ws.receive_text())['type']=='hello'
@@ -551,7 +553,7 @@ def test_expiry_notification_once():
     with tx() as s: s.get(Tab,t['id']).expires=now()+3600
     _hb();_hb()
     titles=[n['title'] for n in a.get('/api/notifications').json()['items']]
-    assert titles.count('Tab "Tab test" sắp hết hạn')==1
+    assert titles.count(f'Tab "{t["name"]}" sắp hết hạn')==1
 
 def test_thumbnails_and_logs_only_on_demand():
     import backend.app as m
@@ -692,3 +694,45 @@ def test_share_qr_png_points_at_web():
     assert b.get(f"/api/tabs/{t['id']}/shares/{sh['token']}/qr").status_code==404
     a.delete(f"/api/tabs/{t['id']}/shares/{sh['token']}")
     assert a.get(f"/api/tabs/{t['id']}/shares/{sh['token']}/qr").status_code==404
+
+
+
+def test_repeated_topup_reuses_pending_order_and_caps_pending():
+    import backend.app as m
+    if not m.live_payment(): return
+    a=client()
+    o1=a.post('/api/wallet/orders',json={'amount':10000}).json()
+    o2=a.post('/api/wallet/orders',json={'amount':10000}).json()
+    assert o1['id']==o2['id']                       # same amount again: the waiting order, not a new one
+    a.post('/api/wallet/orders',json={'amount':20000});a.post('/api/wallet/orders',json={'amount':30000})
+    r=a.post('/api/wallet/orders',json={'amount':40000})
+    assert r.status_code==409 and 'chờ thanh toán' in r.json()['detail']
+    a.delete('/api/wallet/orders/'+o1['id'])
+    assert a.post('/api/wallet/orders',json={'amount':40000}).status_code==201
+
+
+
+def test_double_click_rent_and_renew_charge_once():
+    a=client()
+    before=a.get('/api/me').json()['balance']
+    r1=a.post('/api/tabs',json={'name':'Đúp','game':'java-demo','plan':'day'})
+    r2=a.post('/api/tabs',json={'name':'Đúp','game':'java-demo','plan':'day'})
+    assert r1.status_code==201 and r2.status_code==409
+    mid=a.get('/api/me').json()['balance']
+    assert sum(1 for t in a.get('/api/tabs').json() if t['name']=='Đúp')==1
+    tid=r1.json()['id']
+    assert a.post(f'/api/tabs/{tid}/renew',json={'plan':'day'}).status_code==200
+    assert a.post(f'/api/tabs/{tid}/renew',json={'plan':'day'}).status_code==429
+    after=a.get('/api/me').json()['balance']
+    price=[p for p in a.get('/api/config').json()['plans'] if p['id']=='day'][0]['price']
+    assert before-mid==price and mid-after==price
+
+
+
+def test_same_jar_twice_is_stored_once():
+    a=client()
+    data=make_jar()
+    r1=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup.jar'}).json()
+    r2=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup-again.jar'}).json()
+    assert r1['jar']['id']==r2['jar']['id'] and r2.get('duplicate') is True
+    assert sum(1 for j in a.get('/api/jars').json() if j['id']==r1['jar']['id'])==1

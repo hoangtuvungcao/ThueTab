@@ -445,6 +445,7 @@ def list_jars(u=Depends(current)):
         jars = s.scalars(select(CustomJar).where(CustomJar.user_id==u.id).order_by(CustomJar.created.desc())).all()
         return [jar_dict(j) for j in jars]
 
+MAX_JARS_PER_USER = 50
 @app.post('/api/jars/upload')
 async def upload_jar(req:Request,u=Depends(current)):
     limit('jar-upload:'+u.id, 10, 300)
@@ -459,10 +460,17 @@ async def upload_jar(req:Request,u=Depends(current)):
     if len(content) < 4 or not content.startswith(b'PK\x03\x04'):
         raise HTTPException(422, 'File không phải là file JAR (định dạng zip chuẩn).')
     kind, midlet, screen = inspect_jar(content)
+    digest = hashlib.sha256(content).hexdigest()
+    with Session() as s:
+        # The same file again (double click, re-upload): hand back the copy already stored, no second file.
+        same = s.scalar(select(CustomJar).where(CustomJar.user_id==u.id, CustomJar.sha256==digest, CustomJar.status!='rejected'))
+        if same: return {'ok':True,'jar':jar_dict(same),'duplicate':True}
+        if u.role!='admin' and s.scalar(select(func.count()).select_from(CustomJar).where(CustomJar.user_id==u.id))>=MAX_JARS_PER_USER:
+            raise HTTPException(409, f'Bạn đã có {MAX_JARS_PER_USER} file JAR. Hãy xoá bớt file không dùng trước khi tải lên.')
     jar_id = uid()
     (JAR_DIR / f"{jar_id}.jar").write_bytes(content)
     with tx() as s:
-        cjar = CustomJar(id=jar_id, user_id=u.id, filename=filename[:120], file_size=len(content), sha256=hashlib.sha256(content).hexdigest(), kind=kind, midlet=midlet, screen=screen, status='approved' if JAR_AUTO_APPROVE or u.role=='admin' else 'pending')
+        cjar = CustomJar(id=jar_id, user_id=u.id, filename=filename[:120], file_size=len(content), sha256=digest, kind=kind, midlet=midlet, screen=screen, status='approved' if JAR_AUTO_APPROVE or u.role=='admin' else 'pending')
         s.add(cjar); s.flush()
         audit(s,u.id,'jar.upload',jar_id)
         return {'ok':True,'jar':jar_dict(cjar)}
@@ -512,6 +520,9 @@ def rent(b:Rent,u=Depends(current)):
     with tx() as s:
         owner=lock(s,User,u.id)
         if b.trial and (not owner.trial_approved or owner.trial_used): raise HTTPException(403,'Dùng thử cần được admin duyệt và chỉ nhận một lần.')
+        # Double click / resent request: the same rental a few seconds ago is not charged a second time.
+        if s.scalar(select(Tab.id).where(Tab.user_id==u.id,Tab.name==b.name.strip(),Tab.game==b.game,Tab.created>now()-5)):
+            raise HTTPException(409,'Tab này vừa được tạo. Kiểm tra danh sách tab trước khi thuê thêm.')
         jar_id=resolve_game(s,u,b.game,b.custom_jar_id)
         existing_slot=lock(s,Slot,b.slot_id) if b.slot_id else None
         if b.slot_id:
@@ -583,6 +594,7 @@ class Renew(BaseModel):
     coupon: str = Field(default='',max_length=32)
 @app.post('/api/tabs/{id}/renew')
 def renew(id:str,b:Renew,u=Depends(current)):
+    limit('renew:'+id,1,5)  # a double click must not charge two renewals
     p=next((p for p in plans() if p['id']==b.plan),None)
     if not p: raise HTTPException(422,'Gói không hợp lệ.')
     with tx() as s:
@@ -640,6 +652,7 @@ def buy_slots(b:BuySlots,u=Depends(current)):
         return result
 @app.post('/api/slots/{id}/renew')
 def renew_slot(id:str,b:Renew,u=Depends(current)):
+    limit('renew-slot:'+id,1,5)
     p=next((p for p in plans() if p['id']==b.plan),None)
     if not p: raise HTTPException(422,'Gói không hợp lệ.')
     with tx() as s:
@@ -843,7 +856,7 @@ def sync_input(b:SyncKey,u=Depends(current)):
 def wallet(u=Depends(current)):
     with Session() as s:
         ledger=s.scalars(select(Ledger).where(Ledger.user_id==u.id).order_by(Ledger.created.desc()).limit(100))
-        orders=s.scalars(select(Order).where(Order.user_id==u.id).order_by(Order.created.desc()).limit(20))
+        orders=s.scalars(select(Order).where(Order.user_id==u.id).order_by(Order.created.desc()).limit(100))
         return {'balance':u.balance,'ledger':[{'id':x.id,'amount':x.amount,'description':x.description,'created':x.created} for x in ledger], 'orders':[order_info(x) for x in orders]}
 def order_info(o):
     account=os.getenv('BANK_ACCOUNT','')
@@ -856,12 +869,20 @@ class Topup(BaseModel):
     amount:int=Field(ge=10000,le=5000000,strict=True)
     coupon:str=Field(default='',max_length=32)
 
+MAX_PENDING_ORDERS=3
 @app.post('/api/wallet/orders',status_code=201)
 def create_order(b:Topup,u=Depends(current)):
     limit('order:'+u.id,20,3600)
     if not live_payment(): raise HTTPException(503,'Nạp tiền đang tạm ngưng, vui lòng thử lại sau.')
     with tx() as s:
+        lock(s,User,u.id)  # one order creation at a time per user (repeated taps)
         code=features.coupon_quote(s,b.coupon,u.id,'topup',b.amount)[0].code if b.coupon else ''
+        # Repeated taps / the same amount again: hand back the order that is still waiting instead of a new one.
+        same=s.scalar(select(Order).where(Order.user_id==u.id,Order.status=='pending',Order.amount==b.amount,
+                                          Order.coupon==code,Order.created>now()-86400).order_by(Order.created.desc()))
+        if same: return order_info(same)
+        if s.scalar(select(func.count()).select_from(Order).where(Order.user_id==u.id,Order.status=='pending',Order.created>now()-86400))>=MAX_PENDING_ORDERS:
+            raise HTTPException(409,f'Bạn đang có {MAX_PENDING_ORDERS} đơn nạp chờ thanh toán. Hãy thanh toán hoặc hủy bớt trước khi tạo đơn mới.')
         # TT + 10 digits fits SePay's default payment-code template (prefix TT, 3–10 digits).
         while True:
             pay_code='TT'+str(10**9+secrets.randbelow(9*10**9))

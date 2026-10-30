@@ -18,8 +18,6 @@ func needs() -> Array:
 
 var _extra: Dictionary = {}  # per-section data loaded on demand: support / coupons / growth
 var _ticket_filter: String = "open"
-const PER_PAGE := 20
-var _pages: Dictionary = {}  # list key -> current page (kept while switching sections)
 var _sys_data: Dictionary = {}
 var _sys_box: VBoxContainer  # "Hệ thống" block of the overview (refreshed every 5 s while shown)
 var _sys_timer: Timer
@@ -265,35 +263,6 @@ func _render_system(d: Dictionary) -> void:
 			UI.label(row, "CPU %s%%" % str(t.get("cpu", 0)), "MonoLabel", false)
 			UI.label(row, _size_mb(t.get("mem_mb", 0)), "MonoLabel", false)
 		_pager(c, "sys:" + str(w.id), wtabs.size(), 10, func() -> void: _render_system(_sys_data))
-
-
-# ---------- pagination ----------
-
-## The slice of `items` on the current page of list `key`.
-func _page_of(key: String, items: Array, per: int = PER_PAGE) -> Array:
-	var pages := maxi(1, ceili(items.size() / float(per)))
-	var p := clampi(int(_pages.get(key, 0)), 0, pages - 1)
-	_pages[key] = p
-	return items.slice(p * per, (p + 1) * per)
-
-
-## "‹ Trước · Trang 2/5 · 87 mục · Sau ›" under a list; hidden when it fits on one page.
-func _pager(parent: Node, key: String, total: int, per: int = PER_PAGE, redraw: Callable = Callable()) -> void:
-	var pages := ceili(total / float(per))
-	if pages <= 1:
-		return
-	var p := int(_pages.get(key, 0))
-	var go := func(to: int) -> void:
-		_pages[key] = to
-		if redraw.is_valid():
-			redraw.call()
-		else:
-			render()
-	var row := UI.hbox(parent, T.space("sm"))
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	UI.button(row, "‹ Trước", go.bind(p - 1), "GhostButton").disabled = p == 0
-	UI.label(row, "Trang %d/%d · %d mục" % [p + 1, pages, total], "MutedLabel", false).size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	UI.button(row, "Sau ›", go.bind(p + 1), "GhostButton").disabled = p >= pages - 1
 
 
 func _jars() -> void:
@@ -591,7 +560,7 @@ func _site_form(parent: Node) -> void:
 	UI.button(c, "+ Thêm câu hỏi", func() -> void: add_row.call("", ""), "GhostButton").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	var save := UI.button(c, "Lưu nội dung", Callable(), "PrimaryButton")
 	save.size_flags_horizontal = Control.SIZE_SHRINK_END
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var faq: Array = []
 		for r in rows:
 			var q := str(r.q.text).strip_edges()
@@ -621,7 +590,7 @@ func _support_form(parent: Node) -> void:
 		inputs[k[0]] = f
 	var save := UI.button(c, "Lưu liên hệ", Callable(), "PrimaryButton")
 	save.size_flags_horizontal = Control.SIZE_SHRINK_END
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var out := {}
 		for k in inputs:
 			out[k] = str(inputs[k].text).strip_edges()
@@ -635,7 +604,7 @@ func _presets_form(parent: Node) -> void:
 	f.text = ", ".join(PackedStringArray(_settings.get("topup_presets", []).map(func(x: Variant) -> String: return str(int(x)))))
 	var save := UI.button(c, "Lưu mức nạp", Callable(), "PrimaryButton")
 	save.size_flags_horizontal = Control.SIZE_SHRINK_END
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var vals: Array = []
 		for part in f.text.split(","):
 			var v := UI.parse_vnd(part)
@@ -704,7 +673,7 @@ func _plans_form(parent: Node) -> void:
 	UI.button(foot, "+ Thêm gói", func() -> void: add_row.call({"days": 30, "price": 9000, "active": true}), "GhostButton")
 	UI.spacer(foot)
 	var save := UI.button(foot, "Lưu bảng giá", Callable(), "PrimaryButton")
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var out: Array = []
 		for r in rows:
 			out.append({"id": str(r.id.text).strip_edges().to_lower(), "name": str(r.name.text).strip_edges(),
@@ -794,7 +763,7 @@ func _user_detail(uid: String) -> void:
 	var note := _area(form, "Ghi chú nội bộ", str(u.get("note", "")), 64)
 	var save := UI.button(form, "Lưu thay đổi", Callable(), "PrimaryButton")
 	save.size_flags_horizontal = Control.SIZE_SHRINK_END
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		await app.act("/admin/users/" + uid, Api.PATCH, {"name": name_in.text.strip_edges(), "email": email_in.text.strip_edges(),
 			"role": "admin" if role.selected == 1 else "user", "max_tabs": int(max_tabs.value), "note": note.text.strip_edges()}, "Đã lưu người dùng."))
 
@@ -858,7 +827,7 @@ func _delete_user(u: Dictionary) -> void:
 	var del := UI.button(row, "Xóa vĩnh viễn", Callable(), "DangerButton")
 	del.disabled = true
 	confirm_in.text_changed.connect(func(t: String) -> void: del.disabled = t.strip_edges().to_lower() != str(u.email).to_lower())
-	del.pressed.connect(func() -> void:
+	UI.on_press(del, func() -> void:
 		var r: Dictionary = await app.act("/admin/users/" + str(u.id), Api.DELETE, null, "Đã xóa tài khoản.")
 		if r.ok:
 			app.close_modal())
@@ -907,7 +876,10 @@ func _support() -> void:
 		UI.empty_state(_body, "Không có yêu cầu", "Không có yêu cầu hỗ trợ nào ở mục này.")
 		return
 	var Support: GDScript = load("res://native/pages/support.gd")
+	var all_items := items
+	items = _page_of("support:" + _ticket_filter, all_items)
 	var c := UI.card(_body, "Card", T.space("xs"))
+	_pager(_body, "support:" + _ticket_filter, all_items.size())
 	for i in items.size():
 		var t: Dictionary = items[i]
 		if i > 0:
@@ -945,7 +917,10 @@ func _coupons() -> void:
 	if items.is_empty():
 		UI.empty_state(_body, "Chưa có mã khuyến mãi", "Tạo mã đầu tiên để chạy chương trình ưu đãi.")
 		return
+	var all_items := items
+	items = _page_of("coupons", all_items)
 	var c := UI.card(_body, "Card", T.space("xs"))
+	_pager(_body, "coupons", all_items.size())
 	for i in items.size():
 		var cp: Dictionary = items[i]
 		if i > 0:
@@ -1069,7 +1044,7 @@ func _growth() -> void:
 	link.max_length = 120
 	var send := UI.button(bc, "Gửi thông báo", Callable(), "PrimaryButton")
 	send.size_flags_horizontal = Control.SIZE_SHRINK_END
-	send.pressed.connect(func() -> void:
+	UI.on_press(send, func() -> void:
 		if title.text.strip_edges().is_empty():
 			app.toast("Hãy nhập tiêu đề.", true)
 			return

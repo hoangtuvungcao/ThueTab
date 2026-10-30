@@ -92,7 +92,7 @@ func _build_buy() -> void:
 			coupon.recheck.call()
 		update.call())
 	update.call()
-	buy.pressed.connect(func() -> void:
+	UI.on_press(buy, func() -> void:
 		buy.disabled = true
 		var data := {"quantity": int(qty.value), "plan": str(plans[plan_opt.selected].id)}
 		if not str(coupon.get("code", "")).is_empty():

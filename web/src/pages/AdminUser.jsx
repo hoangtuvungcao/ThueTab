@@ -5,6 +5,7 @@ import { tabState, ORDER_STATUS, POLL } from '../tokens.js';
 import { useApp } from '../store.js';
 import { usePoll } from '../hooks.js';
 import { Button, Badge, StateBadge, JarBadge, KindBadge, Segmented, Field, Skeleton, ErrorBox, CopyButton, Modal, Empty, Alert, Switch } from '../components/ui.jsx';
+import { Pager, usePaged } from '../components/DataTable.jsx';
 import { useAdminRun, ConfirmDialog, AdminForm, DeleteTabDialog, AdminTabMenu } from './adminShared.jsx';
 
 const TABS = [['profile', 'Hồ sơ'], ['tabs', 'Tab'], ['jars', 'File JAR'], ['wallet', 'Ví'], ['orders', 'Đơn nạp'], ['audit', 'Nhật ký']];
@@ -51,6 +52,7 @@ export default function AdminUser({ id, email, onClose }) {
   const [form, setForm] = useState(null);
   const [del, setDel] = useState(null);       // tab to force-delete
   const [delJar, setDelJar] = useState(null);
+  const pJars = usePaged(d?.jars || []), pLedger = usePaged(d?.ledger || []), pOrders = usePaged(d?.orders || []), pAudit = usePaged(d?.audit || []);
   const [confirm, setConfirm] = useState(null); // 'delete' | 'logout' | 'block' | 'reset'
   const [temp, setTemp] = useState('');
   const gone = useRef(false);
@@ -114,8 +116,8 @@ export default function AdminUser({ id, email, onClose }) {
                 </ul>
               ))}
               {tab === 'jars' && (d.jars.length === 0 ? <Empty title="Không có file JAR" /> : (
-                <ul className="drawer-list">
-                  {d.jars.map(j => (
+                <><ul className="drawer-list">
+                  {pJars.rows.map(j => (
                     <li key={j.id}>
                       <div className="min0 grow"><span className="row gap-sm min0"><strong className="ellipsis" title={j.filename}>{j.filename}</strong><KindBadge kind={j.kind} /></span>
                         <small className="muted num">{fileSize(j.file_size)} · {dateTime(j.created)}</small></div>
@@ -124,19 +126,19 @@ export default function AdminUser({ id, email, onClose }) {
                       <Button size="sm" variant="ghost" icon={Trash2} aria-label={`Xoá ${j.filename}`} onClick={() => setDelJar(j)} />
                     </li>
                   ))}
-                </ul>
+                </ul><Pager {...pJars.pager} unit="file" /></>
               ))}
               {tab === 'wallet' && <>
                 <div className="row between wrap gap-sm"><span>Số dư hiện tại <b className="num">{money(u.balance)}</b></span><Button size="sm" icon={Coins} onClick={() => setForm({ kind: 'balance', target: u })}>Cộng / trừ tiền</Button></div>
                 {d.ledger.length === 0 ? <Empty title="Chưa có giao dịch" /> : (
-                  <ul className="drawer-list">{d.ledger.map(l => (
+                  <><ul className="drawer-list">{pLedger.rows.map(l => (
                     <li key={l.id}><div className="min0 grow"><span className="ellipsis" title={l.description}>{l.description}</span><small className="muted num">{dateTime(l.created)}</small></div>
                       <b className={'num amount ' + (l.amount >= 0 ? 'in' : 'out')}>{l.amount >= 0 ? '+' : '−'}{money(Math.abs(l.amount))}</b></li>
-                  ))}</ul>
+                  ))}</ul><Pager {...pLedger.pager} unit="giao dịch" /></>
                 )}
               </>}
               {tab === 'orders' && (d.orders.length === 0 ? <Empty title="Chưa có đơn nạp" /> : (
-                <ul className="drawer-list">{d.orders.map(o => {
+                <><ul className="drawer-list">{pOrders.rows.map(o => {
                   const m = ORDER_STATUS[o.status] || { label: o.status, color: 'dim' };
                   return (
                     <li key={o.id}><div className="min0 grow"><code>{o.code}</code><small className="muted num">{money(o.amount)} · {dateTime(o.created)}</small></div>
@@ -145,12 +147,12 @@ export default function AdminUser({ id, email, onClose }) {
                       {o.status === 'pending' && <Button size="sm" variant="ghost" onClick={() => run(() => api(`/admin/orders/${o.id}/cancel`, 'POST'), 'Đã huỷ đơn.')}>Huỷ</Button>}
                     </li>
                   );
-                })}</ul>
+                })}</ul><Pager {...pOrders.pager} unit="đơn" /></>
               ))}
               {tab === 'audit' && (d.audit.length === 0 ? <Empty title="Chưa có nhật ký" /> : (
-                <ul className="drawer-list">{d.audit.map((a, i) => (
+                <><ul className="drawer-list">{pAudit.rows.map((a, i) => (
                   <li key={a.id || i}><code>{a.action}</code><span className="muted ellipsis grow" title={a.target}>{email[a.target] || a.target}</span><small className="muted num" title={dateTime(a.created)}>{ago(a.created)}</small></li>
-                ))}</ul>
+                ))}</ul><Pager {...pAudit.pager} unit="mục" /></>
               ))}
             </div>
           </>

@@ -50,7 +50,8 @@ func render() -> void:
 	grid.add_theme_constant_override("h_separation", T.space("md"))
 	grid.add_theme_constant_override("v_separation", T.space("md"))
 	_list.add_child(grid)
-	for j in app.jars:
+	_pager(_list, "jars", app.jars.size(), 10)
+	for j in _page_of("jars", app.jars, 10):
 		var c := UI.card(grid, "Card", T.space("sm"))
 		var top := UI.hbox(c, T.space("md"))
 		UI.image(top, UI.game_icon("custom"), Vector2(40, 40))

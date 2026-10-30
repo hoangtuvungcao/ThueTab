@@ -5,6 +5,7 @@ import { navLabel, ORDER_STATUS } from '../tokens.js';
 import { useApp } from '../store.js';
 import { Button, Card, Empty, PageHead, Alert, Badge, CopyButton, Skeleton, Field, useToast, CouponField } from '../components/ui.jsx';
 import { SupportLinks } from './Help.jsx';
+import { Pager, usePaged } from '../components/DataTable.jsx';
 
 const OrderBadge = ({ s }) => { const m = ORDER_STATUS[s] || { label: s, color: 'dim' }; return <Badge color={m.color}>{m.label}</Badge>; };
 
@@ -55,6 +56,8 @@ export default function WalletPage() {
   const presets = config.topup_presets?.length ? config.topup_presets : [20000, 50000, 100000, 200000, 500000];
   const [amount, setAmount] = useState(presets[1] ?? presets[0]);
   const [orderId, setOrderId] = useState(null);
+  const orderPage = usePaged(wallet?.orders || []);
+  const ledgerPage = usePaged(wallet?.ledger || []);
   const [coupon, setCoupon] = useState(null);
   const [busy, setBusy] = useState(false);
   const order = wallet?.orders.find(o => o.id === orderId);
@@ -122,7 +125,7 @@ export default function WalletPage() {
             <table className="table">
               <thead><tr><th>Mã đơn</th><th>Số tiền</th><th>Trạng thái</th><th className="hide-mobile">Thời gian</th><th /></tr></thead>
               <tbody>
-                {wallet.orders.map(o => (
+                {orderPage.rows.map(o => (
                   <tr key={o.id}>
                     <td className="mono">{o.code}</td>
                     <td>{money(o.amount)}</td>
@@ -137,6 +140,7 @@ export default function WalletPage() {
                 ))}
               </tbody>
             </table>
+            <Pager {...orderPage.pager} unit="đơn" />
           </div>
         )}
       </Card>
@@ -144,7 +148,7 @@ export default function WalletPage() {
       <Card title="Lịch sử giao dịch" pad={false}>
         {wallet.ledger.length === 0 ? <Empty icon={Receipt} title="Chưa có giao dịch" /> : (
           <ul className="ledger">
-            {wallet.ledger.map(l => (
+            {ledgerPage.rows.map(l => (
               <li key={l.id}>
                 <span className={'ledger-icon ' + (l.amount >= 0 ? 'in' : 'out')} aria-hidden>{l.amount >= 0 ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}</span>
                 <div className="grow min0"><strong className="ellipsis">{l.description}</strong><small className="muted">{dateTime(l.created)}</small></div>
@@ -153,6 +157,7 @@ export default function WalletPage() {
             ))}
           </ul>
         )}
+        {wallet.ledger.length > 0 && <Pager {...ledgerPage.pager} unit="giao dịch" />}
       </Card>
     </>
   );

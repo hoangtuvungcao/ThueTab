@@ -53,12 +53,22 @@ func _load_list() -> void:
 		UI.label(_list, r.error, "DangerLabel")
 		return
 	_tickets = r.data if r.data is Array else []
+	_draw_list()
+
+
+## Ticket list from the loaded data (page changes redraw without asking the server again).
+func _draw_list() -> void:
+	if not is_instance_valid(_list):
+		return
+	UI.clear(_list)
 	if _tickets.is_empty():
 		UI.empty_state(_list, "Chưa có yêu cầu hỗ trợ", "Khi cần giúp đỡ, tạo yêu cầu và chúng tôi sẽ phản hồi sớm nhất.", "+ Tạo yêu cầu", _create_dialog)
 		return
+	var shown := _page_of("tickets", _tickets, 10)
 	var c := UI.card(_list, "Card", T.space("xs"))
-	for i in _tickets.size():
-		var t: Dictionary = _tickets[i]
+	_pager(_list, "tickets", _tickets.size(), 10, _draw_list)
+	for i in shown.size():
+		var t: Dictionary = shown[i]
 		if i > 0:
 			UI.separator(c)
 		var b := UI.button(c, "", func() -> void: app.go("support", {"id": str(t.id)}), "GhostButton")
@@ -90,7 +100,7 @@ func _create_dialog() -> void:
 	var row: HBoxContainer = app.modal_footer()
 	UI.button(row, "Hủy", app.close_modal, "GhostButton")
 	var send := UI.button(row, "Gửi yêu cầu", Callable(), "PrimaryButton")
-	send.pressed.connect(func() -> void:
+	UI.on_press(send, func() -> void:
 		if subject.text.strip_edges().length() < 3 or text.text.strip_edges().is_empty():
 			app.toast("Hãy nhập tiêu đề (tối thiểu 3 ký tự) và nội dung.", true)
 			return
@@ -168,7 +178,7 @@ func _render_thread() -> void:
 	var row := UI.hbox(reply, T.space("sm"))
 	row.alignment = BoxContainer.ALIGNMENT_END
 	var send := UI.button(row, "Gửi", Callable(), "PrimaryButton")
-	send.pressed.connect(func() -> void:
+	UI.on_press(send, func() -> void:
 		var msg := text.text.strip_edges()
 		if msg.is_empty():
 			return

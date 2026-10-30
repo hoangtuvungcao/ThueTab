@@ -61,10 +61,19 @@ func build() -> void:
 	if friends.is_empty():
 		UI.label(_box, "Chưa có ai đăng ký bằng mã của bạn.", "MutedLabel")
 		return
-	var c := UI.card(_box, "Card", T.space("xs"))
-	for i in friends.size():
+	var fbox := UI.vbox(_box, T.space("xs"))
+	_draw_friends(fbox, friends)
+
+
+## Friends list, 10 per page (page changes redraw only this block).
+func _draw_friends(fbox: VBoxContainer, friends: Array) -> void:
+	UI.clear(fbox)
+	var shown := _page_of("friends", friends, 10)
+	var c := UI.card(fbox, "Card", T.space("xs"))
+	_pager(fbox, "friends", friends.size(), 10, func() -> void: _draw_friends(fbox, friends))
+	for i in shown.size():
 		if i > 0:
 			UI.separator(c)
 		var row := UI.hbox(c, T.space("md"))
-		UI.label_clip(row, str(friends[i].get("name", "")), "StrongLabel")
-		UI.label(row, UI.datetime(friends[i].get("created")), "DimLabel", false)
+		UI.label_clip(row, str(shown[i].get("name", "")), "StrongLabel")
+		UI.label(row, UI.datetime(shown[i].get("created")), "DimLabel", false)

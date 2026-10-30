@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update, delete, func
 from .db import *
 from .app import (current, admin, tx, lock, audit, uid, now, owned, tab_dict, setting, plans, public_user,
-                  restart, SCREEN_IDS, session_token, ORIGINS)
+                  restart, SCREEN_IDS, session_token, ORIGINS, limit)
 
 router = APIRouter()
 
@@ -286,7 +286,7 @@ def ticket_dict(s, t, with_messages=False):
 @router.get('/api/tickets')
 def my_tickets(u=Depends(current)):
     with Session() as s:
-        return [ticket_dict(s, t) for t in s.scalars(select(Ticket).where(Ticket.user_id == u.id).order_by(Ticket.updated.desc()))]
+        return [ticket_dict(s, t) for t in s.scalars(select(Ticket).where(Ticket.user_id == u.id).order_by(Ticket.updated.desc()).limit(200))]
 
 @router.post('/api/tickets', status_code=201)
 def open_ticket(b: TicketIn, u=Depends(current)):
@@ -392,6 +392,7 @@ def end_session(sid: str, u=Depends(current)):
 
 @router.post('/api/tabs/{id}/restart')
 def restart_tab(id: str, u=Depends(current)):
+    limit('restart:' + u.id, 6, 60)
     with tx() as s:
         t = owned(s, id, u)
         if t.expires <= now() or not t.game: raise HTTPException(409, 'Tab chưa có game hoặc đã hết hạn.')
@@ -405,6 +406,7 @@ class Batch(BaseModel):
 
 @router.post('/api/tabs/batch')
 def batch_tabs(b: Batch, u=Depends(current)):
+    limit('batch:' + u.id, 10, 60)
     done = 0
     with tx() as s:
         for id in dict.fromkeys(b.ids):

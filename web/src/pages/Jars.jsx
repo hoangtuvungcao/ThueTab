@@ -5,12 +5,14 @@ import { navLabel } from '../tokens.js';
 import { useApp } from '../store.js';
 import { Button, Card, Empty, JarBadge, PageHead, Alert, Modal, KindBadge, Skeleton, MAINT_HINT, Confirm } from '../components/ui.jsx';
 import { useJarUpload } from '../components/GamePicker.jsx';
+import { Pager, usePaged } from '../components/DataTable.jsx';
 
 export default function Jars() {
   const { jars, config, act, open, tabs, loaded, maint } = useApp();
   const input = useRef(null);
   const [drag, setDrag] = useState(false);
   const [del, setDel] = useState(null);
+  const paged = usePaged(jars || []);
   const autoApprove = config.jar_auto_approve !== false; // field may be absent on older servers
 
   const [upload, busy] = useJarUpload();
@@ -45,7 +47,7 @@ export default function Jars() {
             <table className="table">
               <thead><tr><th>Tên file</th><th>Trạng thái</th><th className="hide-mobile">Tải lên</th><th className="right">Thao tác</th></tr></thead>
               <tbody>
-                {jars.map(j => (
+                {paged.rows.map(j => (
                   <tr key={j.id}>
                     <td><span className="row gap-sm min0"><strong className="ellipsis" title={j.filename}>{j.filename}</strong><KindBadge kind={j.kind} /></span>
                       <small className="muted">{fileSize(j.file_size)}</small></td>
@@ -61,6 +63,7 @@ export default function Jars() {
                 ))}
               </tbody>
             </table>
+            <Pager {...paged.pager} unit="file" />
           </div>
         )}
       </Card>

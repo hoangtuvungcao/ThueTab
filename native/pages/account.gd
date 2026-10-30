@@ -23,7 +23,7 @@ func build() -> void:
 	name_in.max_length = 60
 	var save := UI.button(prof, "Lưu tên", Callable(), "PrimaryButton")
 	save.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	save.pressed.connect(func() -> void:
+	UI.on_press(save, func() -> void:
 		var n := name_in.text.strip_edges()
 		if n.is_empty():
 			app.toast("Tên không được để trống.", true)

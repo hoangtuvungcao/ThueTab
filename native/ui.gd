@@ -80,6 +80,11 @@ static func button(parent: Node, text: String, callback: Callable, variant: Stri
 	return b
 
 
+## Same as a UI.button callback for buttons wired after creation: locked + spinner while the action waits.
+static func on_press(b: Button, callback: Callable) -> void:
+	b.pressed.connect(func() -> void: _run_busy(b, callback))
+
+
 ## Runs a button's action; while it waits (e.g. for the server) the button is locked — repeated taps do nothing —
 ## and after 200 ms its label turns into a spinner. Instant actions (open a dialog, navigate) never show it.
 static func _run_busy(b: Button, callback: Callable) -> void:
@@ -90,6 +95,8 @@ static func _run_busy(b: Button, callback: Callable) -> void:
 	if b.has_meta("busy"):
 		return
 	b.set_meta("busy", true)
+	# State before the action: handlers that disable their own button must not leave it locked afterwards.
+	b.set_meta("was_disabled", b.disabled)
 	var tree := b.get_tree()
 	var done := [false]
 	if tree:
@@ -114,7 +121,6 @@ static func _run_busy(b: Button, callback: Callable) -> void:
 static func _show_spinner(b: Button) -> void:
 	b.set_meta("label_text", b.text)
 	b.set_meta("min_w", b.custom_minimum_size.x)
-	b.set_meta("was_disabled", b.disabled)
 	b.custom_minimum_size.x = maxf(b.custom_minimum_size.x, b.size.x)  # keep the width: no layout jump
 	b.text = ""
 	b.disabled = true

@@ -50,7 +50,7 @@ func build() -> void:
 		var coupon := {}
 		Actions.coupon_box(app, topup, "topup", func() -> int: return UI.parse_vnd(amount.text), Callable(), coupon)
 		var create := UI.button(topup, "Tạo đơn nạp", Callable(), "PrimaryButton")
-		create.pressed.connect(func() -> void:
+		UI.on_press(create, func() -> void:
 			var value := UI.parse_vnd(amount.text)
 			if value < 10000 or value > 5000000:
 				app.toast("Số tiền nạp phải từ 10.000đ đến 5.000.000đ.", true)
@@ -94,7 +94,10 @@ func render() -> void:
 	if orders.is_empty():
 		UI.label(_orders, "Chưa có đơn nạp nào.", "MutedLabel")
 	else:
+		var all_orders := orders
+		orders = _page_of("orders", all_orders, 10)
 		var c := UI.card(_orders, "Card", T.space("sm"))
+		_pager(_orders, "orders", all_orders.size(), 10)
 		for i in orders.size():
 			var o: Dictionary = orders[i]
 			if i > 0:
@@ -112,9 +115,11 @@ func render() -> void:
 	if ledger.is_empty():
 		UI.label(_ledger, "Chưa có giao dịch.", "MutedLabel")
 		return
+	var page := _page_of("ledger", ledger, 10)
 	var lc := UI.card(_ledger, "Card", T.space("sm"))
-	for i in mini(ledger.size(), 50):
-		var item: Dictionary = ledger[i]
+	_pager(_ledger, "ledger", ledger.size(), 10)
+	for i in page.size():
+		var item: Dictionary = page[i]
 		if i > 0:
 			UI.separator(lc)
 		var row := UI.hbox(lc, T.space("md"))

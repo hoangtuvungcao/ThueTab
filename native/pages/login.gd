@@ -159,7 +159,7 @@ func _render_form() -> void:
 		app.user = res.data.get("user", {})
 		app.save_settings()
 		await app.enter_app()
-	submit.pressed.connect(do_submit)
+	UI.on_press(submit, do_submit)
 	email.text_submitted.connect(func(_t: String) -> void: password.grab_focus())
 	password.text_submitted.connect(func(_t: String) -> void: do_submit.call())
 

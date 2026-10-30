@@ -66,6 +66,15 @@ export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClic
   );
 }
 
+/** Page state for a plain list: { rows on the current page, pager props }. The page index is clamped when the list
+ *  gets shorter (after a delete or a filter). */
+export function usePaged(items, perPage = 10) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  const p = Math.min(page, pages - 1);
+  return { rows: items.slice(p * perPage, (p + 1) * perPage), pager: { page: p, pages, total: items.length, onChange: setPage } };
+}
+
 /** "‹ Trước · Trang 2/5 · 87 dòng · Sau ›" — hidden when everything fits on one page. */
 export function Pager({ page, pages, total, onChange, unit = 'dòng' }) {
   if (pages <= 1) return null;

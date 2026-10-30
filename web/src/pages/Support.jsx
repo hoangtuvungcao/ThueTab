@@ -4,6 +4,7 @@ import { api, ago, dateTime } from '../api.js';
 import { POLL } from '../tokens.js';
 import { useApp } from '../store.js';
 import { usePoll } from '../hooks.js';
+import { Pager, usePaged } from '../components/DataTable.jsx';
 import { Button, Card, Empty, PageHead, Badge, Field, Skeleton, ErrorBox, Modal, useToast } from '../components/ui.jsx';
 
 export const TICKET_STATUS = { open: ['Đang chờ', 'warn'], answered: ['Đã trả lời', 'success'], closed: ['Đã đóng', 'dim'] };
@@ -99,6 +100,7 @@ export default function Support() {
   const { param, go, loadNotes } = useApp();
   const [list, setList] = useState(null);
   const [creating, setCreating] = useState(false);
+  const paged = usePaged(list || []);
   const load = () => api('/tickets').then(setList).catch(() => setList([]));
   useEffect(() => { load(); }, [param]);
   if (param) return (
@@ -119,7 +121,7 @@ export default function Support() {
       ) : (
         <Card pad={false}>
           <ul className="ticket-list">
-            {list.map(t => (
+            {paged.rows.map(t => (
               <li key={t.id}>
                 <button type="button" onClick={() => go('support/' + t.id)}>
                   <span className="min0 grow"><strong className="ellipsis" title={t.subject}>{t.subject}</strong>
@@ -129,6 +131,7 @@ export default function Support() {
               </li>
             ))}
           </ul>
+          <Pager {...paged.pager} unit="yêu cầu" />
         </Card>
       )}
       {creating && <NewTicket onClose={() => setCreating(false)} onDone={t => { setCreating(false); go('support/' + t.id); }} />}

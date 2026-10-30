@@ -3,16 +3,35 @@ import { Check, Copy, Loader2, MoreHorizontal, X, CheckCircle2, AlertTriangle, I
 import { api, money, dateTime } from '../api.js';
 import { JAR_STATUS, stateMeta, COMPONENTS } from '../tokens.js';
 
-export function Button({ variant = 'secondary', size, icon: Icon, loading, children, className = '', ...rest }) {
+/**
+ * When onClick returns a promise (a server call), the button ignores further clicks until it settles and shows a
+ * spinner after 150 ms: a double click can never send the same action twice (two rentals, two renewals…).
+ */
+export function Button({ variant = 'secondary', size, icon: Icon, loading, children, className = '', onClick, ...rest }) {
+  const [pending, setPending] = useState(false);
+  const running = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const click = onClick && (e => {
+    if (running.current) { e.preventDefault(); return; }
+    const r = onClick(e);
+    if (r && typeof r.then === 'function') {
+      running.current = true;
+      const t = setTimeout(() => { if (mounted.current) setPending(true); }, 150);
+      Promise.resolve(r).catch(() => {}).finally(() => { clearTimeout(t); running.current = false; if (mounted.current) setPending(false); });
+    }
+  });
+  const busy = loading || pending;
   return (
     <button
       type="button"
       className={`btn btn-${variant}${size ? ' btn-' + size : ''}${!children ? ' btn-icon' : ''} ${className}`}
-      disabled={loading || rest.disabled}
-      aria-busy={loading || undefined}
       {...rest}
+      disabled={busy || rest.disabled}
+      aria-busy={busy || undefined}
+      onClick={click}
     >
-      {loading ? <Loader2 className="spin" aria-hidden /> : Icon && <Icon aria-hidden />}
+      {busy ? <Loader2 className="spin" aria-hidden /> : Icon && <Icon aria-hidden />}
       {children != null && children !== false && <span className="btn-label">{children}</span>}
     </button>
   );
