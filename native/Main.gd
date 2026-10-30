@@ -312,6 +312,8 @@ func set_user_pref(key: String, value: Variant) -> void:
 		user["prefs"] = before
 		apply_prefs()
 		toast(r.error, true)
+		if page_id == "settings":
+			go("settings")  # put the controls back on the saved values
 
 
 ## Applies visual prefs (theme, accent, text size, density, motion). Rebuilds the Theme and current page

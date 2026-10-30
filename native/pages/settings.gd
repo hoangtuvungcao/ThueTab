@@ -86,9 +86,16 @@ func _choice(parent: Node, title: String, options: Array, current: Variant, key:
 	for o in options:
 		var value: Variant = o[0]
 		var active := _same(value, current)
-		var b := UI.button(row, str(o[1]), func() -> void:
+		var b := UI.button(row, str(o[1]), Callable(), "ChipButtonActive" if active else "ChipButton")
+		b.set_meta("value", value)
+		# Highlight the new choice right away: only look prefs (theme, accent, size) rebuild the page, so FPS,
+		# keypad size, columns… kept showing the old choice until the page was opened again.
+		b.pressed.connect(func() -> void:
+			for other in row.get_children():
+				if other is Button and other.has_meta("value"):
+					(other as Button).theme_type_variation = "ChipButtonActive" if _same(other.get_meta("value"), value) else "ChipButton"
 			if not _same(value, app.uprefs().get(key)):
-				app.set_user_pref(key, value), "ChipButtonActive" if active else "ChipButton")
+				app.set_user_pref(key, value))
 		b.custom_minimum_size.y = UI.target_h(34)
 		if swatch:
 			var preset: Dictionary = T.accents().get(str(value), {})
