@@ -102,8 +102,9 @@ func _overview() -> void:
 	UI.stat(grid, "Worker trực tuyến", "%d / %d" % [online, app.admin.get("workers", []).size()])
 
 	var shead := UI.hbox(_body, T.space("sm"))
-	UI.label(shead, "Hệ thống", "SubheadingLabel").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	var hint := UI.label(shead, "· cập nhật mỗi 5 giây", "DimLabel")
+	# Single-line labels (no autowrap): a shrunk wrapping label collapses to zero width and stacks its letters.
+	UI.label(shead, "Hệ thống", "SubheadingLabel", false).size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var hint := UI.label(shead, "· cập nhật mỗi 5 giây", "DimLabel", false)
 	hint.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_sys_box = UI.vbox(_body, T.space("md"))
