@@ -44,13 +44,14 @@ func build() -> void:
 		amount.text = str(int(presets_cfg[mini(1, presets_cfg.size() - 1)])) if not presets_cfg.is_empty() else "50000"
 		var presets := UI.flow(topup, T.space("xs") + 2)
 		for a in presets_cfg:
-			var b := UI.button(presets, UI.money(a), func() -> void: amount.text = str(a), "ChipButton")
+			# int(): amounts from JSON are floats (10000.0) — "10000.0" in the field once became 100.000đ.
+			var b := UI.button(presets, UI.money(a), func() -> void: amount.text = str(int(a)), "ChipButton")
 			b.custom_minimum_size.y = UI.target_h(32)
 		var coupon := {}
-		Actions.coupon_box(app, topup, "topup", func() -> int: return int(amount.text.replace(".", "").replace(",", "").strip_edges()) if amount.text.strip_edges().replace(".", "").is_valid_int() else 0, Callable(), coupon)
+		Actions.coupon_box(app, topup, "topup", func() -> int: return UI.parse_vnd(amount.text), Callable(), coupon)
 		var create := UI.button(topup, "Tạo đơn nạp", Callable(), "PrimaryButton")
 		create.pressed.connect(func() -> void:
-			var value := int(amount.text.replace(".", "").replace(",", "").strip_edges())
+			var value := UI.parse_vnd(amount.text)
 			if value < 10000 or value > 5000000:
 				app.toast("Số tiền nạp phải từ 10.000đ đến 5.000.000đ.", true)
 				return

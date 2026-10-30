@@ -385,7 +385,7 @@ func _adjust_balance(u: Dictionary) -> void:
 	var row: HBoxContainer = app.modal_footer()
 	UI.button(row, "Hủy", app.close_modal, "GhostButton")
 	UI.button(row, "Lưu", func() -> void:
-		var v := int(amount.text.replace(".", "").replace(",", "").strip_edges())
+		var v := UI.parse_vnd(amount.text)
 		if v == 0:
 			app.toast("Số tiền phải khác 0.", true)
 			return
@@ -636,9 +636,9 @@ func _presets_form(parent: Node) -> void:
 	save.pressed.connect(func() -> void:
 		var vals: Array = []
 		for part in f.text.split(","):
-			var v := part.strip_edges().replace(".", "")
-			if v.is_valid_int():
-				vals.append(int(v))
+			var v := UI.parse_vnd(part)
+			if v > 0:
+				vals.append(v)
 		await _save_setting("topup_presets", vals, "Đã lưu mức nạp nhanh."))
 
 
@@ -952,7 +952,7 @@ func _coupons() -> void:
 		var col := UI.vbox(row, 0)
 		col.custom_minimum_size.x = 240
 		UI.label_clip(col, str(cp.code), "StrongLabel")
-		var uses := "%d/%s lượt" % [int(cp.get("used", 0)), str(cp.max_uses) if int(cp.get("max_uses", 0)) > 0 else "∞"]
+		var uses := "%d/%s lượt" % [int(cp.get("used", 0)), str(int(cp.max_uses)) if int(cp.get("max_uses", 0)) > 0 else "∞"]
 		var exp_text := "hết hạn " + UI.datetime(cp.expires) if int(cp.get("expires", 0)) > 0 else "không hết hạn"
 		UI.label_clip(col, "%s · %s · %s" % [coupon_text(cp), uses, exp_text], "DimLabel")
 		var on := bool(cp.get("active", true))

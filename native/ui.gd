@@ -414,6 +414,26 @@ static func jar_badge(parent: Node, status: String) -> PanelContainer:
 
 
 ## Decodes PNG or JPEG bytes (detected by magic number). Returns null when neither.
+## Money typed by a person: "10.000", "10,000", "1.000.000", "10000", "-5.000" or "10000.0".
+## "." / "," are thousands separators only when every group after them has 3 digits; otherwise what follows is
+## a fraction and is dropped ("10000.0" → 10000, never 100000). 0 when not a number.
+static func parse_vnd(text: String) -> int:
+	var s := text.strip_edges().replace(" ", "").replace("đ", "").replace("₫", "")
+	var neg := s.begins_with("-")
+	if neg or s.begins_with("+"):
+		s = s.substr(1)
+	var parts := s.replace(",", ".").split(".")
+	if parts.size() > 1:
+		var thousands := true
+		for i in range(1, parts.size()):
+			if parts[i].length() != 3:
+				thousands = false
+		s = "".join(parts) if thousands else parts[0]
+	if s.is_empty() or not s.is_valid_int():
+		return 0
+	return -int(s) if neg else int(s)
+
+
 static func decode_image(bytes: PackedByteArray) -> Image:
 	if bytes.size() < 4:
 		return null
