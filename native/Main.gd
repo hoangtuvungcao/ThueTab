@@ -110,6 +110,7 @@ var _modal_dim: ColorRect
 var _modal_width: float = 560.0
 var _sheet_offset: float = 0.0  # slide-in offset for bottom sheets (animated, applied by _layout_modal)
 var _kb_h: float = 0.0  # on-screen keyboard height in UI units: dialogs sit above it ("Gõ chữ vào game")
+var _kb_top := false  # typing in a dialog but the keyboard height is unknown (some Android builds report 0): dialog goes to the top
 var _pop_layer: Control  # notifications popover (desktop)
 var _bell: Button
 var _retired: Array = []
@@ -1290,6 +1291,8 @@ func _layout_modal() -> void:
 			(c as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL if (sheet or equal) else Control.SIZE_SHRINK_END
 			(c as Control).size_flags_stretch_ratio = 1.0
 	var max_h := size.y - _kb_h - (_insets.position.y + 24.0 if sheet else 48.0)
+	if _kb_top:
+		max_h = size.y * 0.45 - _insets.position.y
 	var head_h := _modal_head.get_combined_minimum_size().y if _modal_head.visible else 0.0
 	var handle_h := _sheet_handle.get_combined_minimum_size().y if sheet else 0.0
 	var foot_h := (_modal_footer.get_combined_minimum_size().y + T.compf("dialog.footer_gap", 12)) if _modal_footer.visible else 0.0
@@ -1303,13 +1306,18 @@ func _layout_modal() -> void:
 	var ph := _modal_panel.get_combined_minimum_size().y
 	_modal_panel.size = Vector2(w, ph)
 	# The keyboard covers the safe-area inset too: a sheet resting on it needs no bottom inset padding.
-	if sheet and _kb_h > 0.0:
+	if sheet and (_kb_h > 0.0 or _kb_top):
 		sb.content_margin_bottom = pad
+		if _kb_top:
+			sb.corner_radius_bottom_left = 20
+			sb.corner_radius_bottom_right = 20
 		_modal_panel.reset_size()
 		ph = _modal_panel.get_combined_minimum_size().y
 		_modal_panel.size = Vector2(w, ph)
 	var room := size.y - _kb_h  # visible height above the keyboard
 	_modal_panel.position = Vector2(0, room - ph + _sheet_offset) if sheet else Vector2(floorf((size.x - w) / 2.0), floorf(maxf(8.0, (room - ph) / 2.0)))
+	if _kb_top:
+		_modal_panel.position.y = _insets.position.y + 8.0
 	_modal_panel.pivot_offset = _modal_panel.size / 2.0
 
 
@@ -1317,9 +1325,13 @@ func _watch_keyboard() -> void:
 	var px := DisplayServer.virtual_keyboard_get_height()
 	var win := DisplayServer.window_get_size()
 	var h := px * size.y / float(win.y) if win.y > 0 and px > 0 else 0.0
-	if absf(h - _kb_h) < 1.0:
+	var focus := get_viewport().gui_get_focus_owner()
+	var typing := _overlay != null and _overlay.visible and (focus is LineEdit or focus is TextEdit) and _modal_panel.is_ancestor_of(focus)
+	var top := typing and h <= 0.0
+	if absf(h - _kb_h) < 1.0 and top == _kb_top:
 		return
 	_kb_h = h
+	_kb_top = top
 	if _overlay and _overlay.visible:
 		_layout_modal()
 
