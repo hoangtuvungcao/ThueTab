@@ -33,6 +33,7 @@ static func code_for_event(event: InputEvent) -> String:
 
 static func _key(parent: Node, text: String, code: String, send: Callable, variant: String = "KeyButton", h: float = 42.0) -> Button:
 	var b := UI.button(parent, text, func() -> void: send.call(code), variant)
+	b.set_meta("instant", true)
 	b.custom_minimum_size = Vector2(0, UI.target_h(h))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.tooltip_text = code

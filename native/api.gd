@@ -4,6 +4,7 @@ extends Node
 
 signal unauthorized
 signal connectivity(online: bool)  # false after a network failure, true again on the next success
+signal busy_changed(busy: bool)  # a user action (POST/PATCH/PUT/DELETE) is waiting for the server
 
 const NETWORK_ERROR := "Không kết nối được. Kiểm tra mạng rồi thử lại."
 
@@ -16,6 +17,7 @@ const DELETE := HTTPClient.METHOD_DELETE
 var endpoint: String = ""  # from res://native/client.json (or --api=... for QA); never shown in the UI
 var online: bool = true
 var token: String = ""
+var _actions: int = 0  # user actions in flight (background GET polling is not counted)
 
 
 func url(path: String) -> String:
@@ -51,6 +53,24 @@ func fetch_bytes(path: String, timeout: float = 8.0, authorized: bool = true) ->
 
 
 func _send(path: String, method: int, headers: PackedStringArray, body: PackedByteArray, timeout: float, parse_json: bool) -> Dictionary:
+	var action := method != GET
+	if action:
+		_actions += 1
+		if _actions == 1:
+			busy_changed.emit(true)
+	var res := await _send_now(path, method, headers, body, timeout, parse_json)
+	if action:
+		_actions -= 1
+		if _actions == 0:
+			busy_changed.emit(false)
+	return res
+
+
+func is_busy() -> bool:
+	return _actions > 0
+
+
+func _send_now(path: String, method: int, headers: PackedStringArray, body: PackedByteArray, timeout: float, parse_json: bool) -> Dictionary:
 	var http := HTTPRequest.new()
 	http.timeout = timeout
 	http.accept_gzip = true

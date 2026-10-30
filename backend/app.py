@@ -756,7 +756,7 @@ async def stream_view(ws:WebSocket,id:str):
             try: m=json.loads(raw)
             except ValueError: continue
             if not isinstance(m,dict): continue
-            if m.get('type')=='fps' and m.get('fps') in FPS_CHOICES: viewer.fps=m['fps'];continue
+            if m.get('type')=='fps' and m.get('fps') in FPS_CHOICES: viewer.fps=m['fps'];hub.retune(id);continue
             # Latency probe: echo the client's timestamp straight back.
             if m.get('type')=='ping': await ws.send_text(json.dumps({'type':'pong','t':m.get('t')}));continue
             cmd=viewer_input(m)

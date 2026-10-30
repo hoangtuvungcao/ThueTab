@@ -1038,6 +1038,7 @@ func _build_portrait_keys() -> void:
 				_fit_screen.call_deferred(), "")
 		else:
 			b = UI.button(dpad, k[0], send_cb.bind(k[1]), "PrimaryButton" if k[1] == "Return" else "KeyButton")
+			b.set_meta("instant", true)
 		b.custom_minimum_size = Vector2(0, h)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_numpad_box = GridContainer.new()

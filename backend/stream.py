@@ -36,12 +36,17 @@ class Viewer:
         # in flight. Without it a slow uplink fills the proxy/tunnel buffers with seconds of frames, and inputs,
         # fps changes and pongs queue behind them.
         self.ack = ack
+        # Rate the tab actually streams at: the highest fps among its viewers. A viewer that chose 30 still
+        # receives a 60 fps stream when someone else watches at 60, so its flow-control window and backlog
+        # limit must follow the stream, not its own choice (it would keep dropping to keyframes: ~15 fps).
+        self.rate = fps
         self.inflight = 0
         self.room = asyncio.Event()
         self.room.set()
 
     def window(self):
-        return 2 if self.codec != 'h264' else max(4, self.fps // 4)
+        # JPEG: 2 frames in flight (frames can be skipped). Video: ~0.35 s of the stream.
+        return 2 if self.codec != 'h264' else max(6, self.rate * 35 // 100)
 
     def acked(self):
         self.inflight = max(0, self.inflight - 1)
@@ -60,7 +65,7 @@ class Viewer:
         # Video frames depend on the previous ones, so they can't be skipped one by one: when the link falls more
         # than ~0.5 s behind, drop the backlog and resume at the next keyframe (one per second).
         key = is_keyframe(frame)
-        if self.queue.qsize() > self.fps // 2:
+        if self.queue.qsize() > self.rate // 2:
             while not self.queue.empty(): self.queue.get_nowait()
             self.need_key = True
         if self.need_key and not key: return
@@ -109,6 +114,7 @@ class Hub:
         group = self.viewers.setdefault(tab, set())
         if len(group) >= MAX_VIEWERS_PER_TAB: return False
         group.add(viewer)
+        self.retune(tab)
         if viewer.codec == 'h264' and self.gop.get(tab):
             for f in self.gop[tab]: viewer.offer(f)
         elif tab in self.latest: viewer.offer(self.latest[tab][0])
@@ -117,9 +123,18 @@ class Hub:
     def remove_viewer(self, tab, viewer):
         group = self.viewers.get(tab, set())
         group.discard(viewer)
+        self.retune(tab)
         if not group:
             self.viewers.pop(tab, None)
             self.gop.pop(tab, None)
+
+    def retune(self, tab):
+        """Call when viewers join/leave or change fps: every viewer follows the tab's stream rate."""
+        group = self.viewers.get(tab, ())
+        rate = max((v.fps for v in group), default=30)
+        for v in group:
+            v.rate = rate
+            if v.inflight < v.window(): v.room.set()
 
     def publish(self, tab, frame):
         if is_jpeg(frame):

@@ -100,6 +100,8 @@ var _modal_scroll: ScrollContainer
 var _modal_footer: HBoxContainer  # sticky action row below the scrolling dialog body
 var _modal_panel: PanelContainer
 var _toast_layer: Control
+var _busy_bar: Control
+var _busy_tween: Tween
 var _toasts: Array = []  # live toast panels, newest last
 var _modal_head: HBoxContainer
 var _modal_title: Label
@@ -796,6 +798,39 @@ func _build_layers() -> void:
 	_toast_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_toast_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toast_layer)
+	_build_busy_bar()
+
+
+## Thin running bar along the top edge while a user action waits for the server (shown after 250 ms so quick
+## actions don't flash), so a slow reply never looks like the app ignored the tap.
+func _build_busy_bar() -> void:
+	_busy_bar = Control.new()
+	_busy_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_busy_bar.custom_minimum_size.y = 3
+	_busy_bar.size.y = 3
+	_busy_bar.clip_contents = true
+	_busy_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_busy_bar.visible = false
+	add_child(_busy_bar)
+	var seg := ColorRect.new()
+	seg.color = T.color("accent")
+	seg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_busy_bar.add_child(seg)
+	_busy_bar.set_meta("seg", seg)
+	api.busy_changed.connect(func(busy: bool) -> void:
+		if not busy:
+			_busy_bar.visible = false
+			if _busy_tween:
+				_busy_tween.kill()
+			return
+		await get_tree().create_timer(0.25).timeout
+		if not api.is_busy() or _busy_bar.visible:
+			return
+		_busy_bar.visible = true
+		var w := maxf(size.x, 1.0)
+		seg.size = Vector2(w * 0.3, 3)
+		_busy_tween = create_tween().set_loops()
+		_busy_tween.tween_property(seg, "position:x", w, 0.9).from(-w * 0.3).set_trans(Tween.TRANS_SINE))
 
 
 func _on_connectivity(is_online: bool) -> void:

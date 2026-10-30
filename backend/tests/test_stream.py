@@ -76,3 +76,34 @@ def test_ack_window_limits_frames_in_flight():
         pump.cancel()
 
     asyncio.run(run())
+
+
+
+def test_viewer_at_30_keeps_up_with_a_60_fps_stream():
+    # Share link (30) watched together with the owner (60): the tab streams 60 fps; the 30-fps viewer must not
+    # treat that as a backlog and keep dropping to keyframes.
+    import asyncio
+
+    class WS:
+        def __init__(self): self.sent = 0
+        async def send_bytes(self, b): self.sent += 1
+
+    async def run():
+        hub = Hub()
+        owner, share = Viewer(WS(), 60, 'h264', ack=True), Viewer(WS(), 30, 'h264', ack=True)
+        hub.add_viewer('t', owner); hub.add_viewer('t', share)
+        assert share.rate == 60 and share.window() >= 20
+        pumps = [asyncio.create_task(v.pump()) for v in (owner, share)]
+        hub.publish('t', KEY)
+        for _ in range(119):  # two seconds at 60 fps; acks arrive ~4 frames late
+            hub.publish('t', DELTA)
+            await asyncio.sleep(0)
+            for v in (owner, share):
+                while v.inflight > 10: v.acked()
+        await asyncio.sleep(0.01)
+        assert share.ws.sent >= 115 and not share.need_key
+        hub.remove_viewer('t', owner)
+        assert share.rate == 30
+        for p in pumps: p.cancel()
+
+    asyncio.run(run())

@@ -74,10 +74,69 @@ static func button(parent: Node, text: String, callback: Callable, variant: Stri
 		b.theme_type_variation = variant
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	if callback.is_valid():
-		b.pressed.connect(callback)
+		b.pressed.connect(func() -> void: _run_busy(b, callback))
 	if parent:
 		parent.add_child(b)
 	return b
+
+
+## Runs a button's action; while it waits (e.g. for the server) the button is locked — repeated taps do nothing —
+## and after 200 ms its label turns into a spinner. Instant actions (open a dialog, navigate) never show it.
+static func _run_busy(b: Button, callback: Callable) -> void:
+	# Game keys (meta "instant", or the KeyButton style) must accept rapid repeated presses.
+	if b.has_meta("instant") or b.theme_type_variation == "KeyButton":
+		callback.call()
+		return
+	if b.has_meta("busy"):
+		return
+	b.set_meta("busy", true)
+	var tree := b.get_tree()
+	var done := [false]
+	if tree:
+		tree.create_timer(0.2).timeout.connect(func() -> void:
+			if not done[0] and is_instance_valid(b):
+				_show_spinner(b))
+	await callback.call()
+	done[0] = true
+	if not is_instance_valid(b):
+		return
+	b.remove_meta("busy")
+	if b.has_meta("spin"):
+		var sp: Control = b.get_meta("spin")
+		if is_instance_valid(sp):
+			sp.queue_free()
+		b.remove_meta("spin")
+		b.text = str(b.get_meta("label_text", b.text))
+		b.custom_minimum_size.x = float(b.get_meta("min_w", 0.0))
+		b.disabled = bool(b.get_meta("was_disabled", false))
+
+
+static func _show_spinner(b: Button) -> void:
+	b.set_meta("label_text", b.text)
+	b.set_meta("min_w", b.custom_minimum_size.x)
+	b.set_meta("was_disabled", b.disabled)
+	b.custom_minimum_size.x = maxf(b.custom_minimum_size.x, b.size.x)  # keep the width: no layout jump
+	b.text = ""
+	b.disabled = true
+	var sp := spinner(minf(18.0, b.size.y * 0.5), b.get_theme_color("font_color"))
+	sp.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	b.add_child(sp)
+	b.set_meta("spin", sp)
+
+
+## Small rotating arc (loading indicator).
+static func spinner(d: float = 18.0, color: Color = Color.WHITE) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(d, d)
+	c.size = Vector2(d, d)
+	c.pivot_offset = Vector2(d, d) / 2.0
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func() -> void:
+		c.draw_arc(Vector2(d, d) / 2.0, d / 2.0 - 1.5, 0.0, TAU * 0.72, 24, color, 2.0, true))
+	c.ready.connect(func() -> void:
+		var tw := c.create_tween().set_loops()
+		tw.tween_property(c, "rotation", TAU, 0.8).from(0.0))
+	return c
 
 
 static func vbox(parent: Node, sep: int = -1) -> VBoxContainer:
