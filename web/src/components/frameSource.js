@@ -20,8 +20,15 @@ const FATAL = new Set([4401, 4403, 4404]); // retrying cannot help
 // server uplink). Needs WebCodecs; otherwise the server sends JPEG frames.
 const ACK = '{"type":"ack"}';
 const AVC = 'avc1.42E01F'; // constrained baseline, what the worker encodes
-const videoSupport = typeof VideoDecoder === 'undefined' ? Promise.resolve(false)
-  : VideoDecoder.isConfigSupported({ codec: AVC, optimizeForLatency: true }).then(r => !!r.supported, () => false);
+// Software decoding first: phone hardware decoders hold several frames before output (the phone's picture ran
+// visibly behind a PC watching the same tab). A 240×320 game screen costs software next to nothing.
+const SOFT = { codec: AVC, optimizeForLatency: true, hardwareAcceleration: 'prefer-software' };
+const HARD = { codec: AVC, optimizeForLatency: true };
+const videoConfig = typeof VideoDecoder === 'undefined' ? Promise.resolve(null)
+  : VideoDecoder.isConfigSupported(SOFT).then(r => (r.supported ? SOFT : VideoDecoder.isConfigSupported(HARD).then(h => (h.supported ? HARD : null))))
+    .catch(() => null);
+let config = HARD;
+const videoSupport = videoConfig.then(c => { if (c) config = c; return !!c; });
 let videoBroken = false; // a decoder failed in this page: stay on JPEG
 
 // Keyframe = the access unit carries an SPS (7) or an IDR slice (5).
@@ -74,9 +81,11 @@ export function useTabStream(tabId, { fps, enabled, share }) {
           // Undecodable stream: fall back to JPEG for the rest of this page's life.
           error: () => { videoBroken = true; closeDecoder(); wsRef.current?.close(4000); }
         });
-        decoder.configure({ codec: AVC, optimizeForLatency: true });
+        decoder.configure(config);
       }
       const key = isKey(bytes);
+      // Decoder falling behind (slow phone): skip to the next keyframe rather than show an ever older picture.
+      if (!key && decoder.decodeQueueSize > 2) haveKey = false;
       if (!haveKey && !key) return; // join at a keyframe
       haveKey = true;
       vts += 33333;

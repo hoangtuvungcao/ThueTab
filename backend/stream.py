@@ -64,9 +64,9 @@ class Viewer:
         # wait for the first JPEG instead of getting undecodable frames.
         if self.codec != 'h264': return
         # Video frames depend on the previous ones, so they can't be skipped one by one: when the link falls more
-        # than ~0.5 s behind, drop the backlog and resume at the next keyframe (one per second).
+        # than ~0.25 s behind, drop the backlog and resume at the next keyframe (two per second).
         key = is_keyframe(frame)
-        if self.queue.qsize() > self.rate // 2:
+        if self.queue.qsize() > self.rate // 4:
             while not self.queue.empty(): self.queue.get_nowait()
             self.need_key = True
         if self.need_key and not key: return

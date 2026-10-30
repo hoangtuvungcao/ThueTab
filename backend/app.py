@@ -1430,7 +1430,7 @@ from . import features
 app.include_router(features.router)
 
 DIST=ROOT/'web/dist'
-if DIST.exists():
+if (DIST/'assets').is_dir():  # a built web app (an empty dist/ is not one)
     app.mount('/assets', StaticFiles(directory=DIST/'assets'), name='assets')
     if (DIST/'icons').exists():
         app.mount('/icons', StaticFiles(directory=DIST/'icons'), name='icons')
