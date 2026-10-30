@@ -78,6 +78,7 @@ class Viewer:
                 await self.room.wait()
             frame = await self.queue.get()
             self.last_sent = time.monotonic()
+            hub.bytes_out += len(frame)
             if self.ack:
                 self.inflight += 1
                 if self.inflight >= self.window(): self.room.clear()
@@ -92,6 +93,8 @@ class Hub:
         self.gop = {}       # tab_id -> H.264 frames since the last keyframe (lets a new viewer start instantly)
         self.thumb_seen = {}  # tab_id -> monotonic time of the last /frame request
         self.log_seen = {}    # tab_id -> monotonic time of the last /logs request
+        self.bytes_out = 0    # video/image bytes sent to viewers (admin bandwidth figure)
+        self.bytes_in = 0     # bytes received from workers
 
     def watch(self):
         """Tabs to stream and at what rate: live viewers' highest fps, else a thumbnail trickle.
@@ -105,6 +108,13 @@ class Hub:
     def video(self):
         """Tabs whose viewers all decode H.264; the others (native app, older browsers) get JPEG."""
         return [tab for tab, vs in list(self.viewers.items()) if vs and all(v.codec == 'h264' for v in list(vs))]
+
+    def live(self):
+        """Live-view figures for the admin system view."""
+        groups = [list(vs) for vs in list(self.viewers.values()) if vs]
+        return {'viewers': sum(len(g) for g in groups), 'tabs_watched': len(groups),
+                'video_viewers': sum(1 for g in groups for v in g if v.codec == 'h264'),
+                'streams_in': len(self.workers), 'thumbs': len(self.thumbs_wanted())}
 
     def thumbs_wanted(self):
         """Tabs whose thumbnail (tab card, multi-screen wall) is on someone's screen."""
@@ -146,6 +156,7 @@ class Hub:
             if v.inflight < v.window(): v.room.set()
 
     def publish(self, tab, frame):
+        self.bytes_in += len(frame)
         if is_jpeg(frame):
             self.latest[tab] = (frame, time.monotonic())
             self.gop.pop(tab, None)

@@ -659,3 +659,19 @@ def test_worker_jpeg_snapshot_serves_thumbnail():
     assert w.put('/api/internal/frames/'+t['id'],content=b'\xff\xd8\xff'+b'junk').status_code==422
     hb=w.post('/api/internal/heartbeat',json={'id':'local-1','memory_mb':0,'statuses':{}}).json()
     assert t['id'] in hb['thumbs']
+
+
+
+def test_admin_system_view():
+    # Worker heartbeats carry host figures; the admin system view shows them with live stream numbers.
+    a=client();t=rent(a).json()
+    w=TestClient(app);w.headers['Authorization']='Bearer '+os.environ['WORKER_TOKEN']
+    sysd={'cpu':12.5,'cores':4,'mem_total_mb':4000,'mem_used_mb':1200,'net_rx_bps':1000,'net_tx_bps':50000,
+          'disk':{'total_mb':30000,'used_mb':9000},'tabs':[{'tab_id':t['id'],'cpu':40.0,'mem_mb':150}]}
+    w.post('/api/internal/heartbeat',json={'id':'local-1','memory_mb':150,'statuses':{t['id']:'running'},'system':sysd})
+    d=client('admin@test.vn').get('/api/admin/system').json()
+    wk=[x for x in d['workers'] if x['id']=='local-1'][0]
+    assert wk['system']['cpu']==12.5 and wk['system']['net_tx_bps']==50000 and 'tabs' not in wk['system']
+    assert wk['tabs'][0]['tab_id']==t['id'] and wk['tabs'][0]['mem_mb']==150
+    assert {'viewers','out_bps','in_bps'}<=set(d['live']) and d['tabs']['total']>=1
+    assert a.get('/api/admin/system').status_code==403

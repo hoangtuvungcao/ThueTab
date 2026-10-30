@@ -1,5 +1,5 @@
 """Trusted local worker. Only this process can access Docker; never expose its socket to API."""
-import os, time, json, shlex, logging, threading
+import os, time, json, shlex, shutil, logging, threading
 from pathlib import Path
 import docker, httpx
 from docker.errors import NotFound
@@ -304,7 +304,7 @@ def main():
             existing=containers()
             memory=memory_state['mb']
             for id,c in existing.items(): statuses[id]='running' if c.status=='running' else 'error'
-            r=http.post('/api/internal/heartbeat',json={'id':WORKER,'statuses':statuses,'memory_mb':memory});r.raise_for_status()
+            r=http.post('/api/internal/heartbeat',json={'id':WORKER,'statuses':statuses,'memory_mb':memory,'system':dict(system_state)});r.raise_for_status()
             payload=r.json();last_ok=time.monotonic();heartbeat_state['last_ok']=last_ok;lease=min(15,payload['lease_seconds'])
             desired={t['id']:t for t in payload['tabs'] if t['desired']=='running' and t['expires']>time.time()}
             for id,c in existing.items():
@@ -345,18 +345,67 @@ def main():
 
 heartbeat_state={'last_ok':0}
 memory_state={'mb':0}
-def memory_sampler():
-    # docker stats takes ~1 s per container; sample in the background so input and frames never wait on it.
+system_state={}  # host + per-tab resource figures sent with every heartbeat (admin "Hệ thống" view)
+
+def _cpu_times():
+    f=[int(x) for x in Path('/proc/stat').read_text().split('\n',1)[0].split()[1:]]
+    idle=f[3]+(f[4] if len(f)>4 else 0)
+    return sum(f),idle
+
+def _net_bytes():
+    # Physical/virtual NICs only: loopback, Docker bridges and container veths would count traffic twice.
+    rx=tx=0
+    for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
+        name,data=line.split(':',1)
+        name=name.strip()
+        if name=='lo' or name.startswith(('veth','docker','br-','virbr','cni','flannel')): continue
+        v=data.split();rx+=int(v[0]);tx+=int(v[8])
+    return rx,tx
+
+def _meminfo():
+    m={}
+    for line in Path('/proc/meminfo').read_text().splitlines():
+        k,v=line.split(':',1);m[k]=int(v.split()[0])//1024
+    return m
+
+def _disk(path):
+    try:
+        d=shutil.disk_usage(path)
+        return {'total_mb':d.total//1048576,'used_mb':(d.total-d.free)//1048576}
+    except OSError: return None
+
+def system_sampler():
+    """Host figures every 5 s (cheap /proc reads); per-tab CPU/RAM from docker stats every 30 s (~1 s per tab)."""
     api=docker.from_env(timeout=10)
+    prev_cpu=_cpu_times();prev_net=_net_bytes();prev_at=time.monotonic();tabs_at=0;tabs=[]
     while True:
-        total=0
+        time.sleep(5)
         try:
-            for c in api.containers.list(filters={'label':[f'{k}={v}' for k,v in LABELS.items()]}):
-                try: total+=c.stats(stream=False)['memory_stats'].get('usage',0)//1048576
-                except Exception: pass
-            memory_state['mb']=total
-        except Exception: pass
-        time.sleep(60)
+            cpu=_cpu_times();net=_net_bytes();at=time.monotonic();dt=max(at-prev_at,0.001)
+            busy=(cpu[0]-prev_cpu[0])-(cpu[1]-prev_cpu[1]);total=max(cpu[0]-prev_cpu[0],1)
+            m=_meminfo()
+            if at-tabs_at>=30:
+                tabs_at=at;tabs=[];mem_total=0
+                for c in api.containers.list(filters={'label':[f'{k}={v}' for k,v in LABELS.items()]}):
+                    try:
+                        st=c.stats(stream=False)
+                        cd=st['cpu_stats']['cpu_usage']['total_usage']-st['precpu_stats']['cpu_usage']['total_usage']
+                        sd=st['cpu_stats'].get('system_cpu_usage',0)-st['precpu_stats'].get('system_cpu_usage',0)
+                        n=st['cpu_stats'].get('online_cpus') or os.cpu_count() or 1
+                        mem=st['memory_stats'].get('usage',0)//1048576;mem_total+=mem
+                        tabs.append({'tab_id':c.labels.get('thuetab.tab',''),'cpu':round(cd/sd*n*100,1) if sd>0 else 0.0,'mem_mb':mem})
+                    except Exception: pass
+                memory_state['mb']=mem_total
+            system_state.update({
+                'cpu':round(busy*100/total,1),'cores':os.cpu_count() or 1,'load':[round(x,2) for x in os.getloadavg()],
+                'mem_total_mb':m.get('MemTotal',0),'mem_used_mb':m.get('MemTotal',0)-m.get('MemAvailable',0),
+                'swap_total_mb':m.get('SwapTotal',0),'swap_used_mb':m.get('SwapTotal',0)-m.get('SwapFree',0),
+                'disk':_disk(str(ROOT/'data')),'docker_disk':_disk('/var/lib/docker') if Path('/var/lib/docker').exists() else None,
+                'net_rx_bps':int((net[0]-prev_net[0])/dt),'net_tx_bps':int((net[1]-prev_net[1])/dt),
+                'uptime':int(float(Path('/proc/uptime').read_text().split()[0])),'tabs':tabs[:100],'at':int(time.time())})
+            prev_cpu,prev_net,prev_at=cpu,net,at
+        except Exception as e:
+            logging.warning('System sampler: %s',type(e).__name__)
 def watchdog():
     # Independent Docker connection; HTTP or screenshot work must not bypass lease expiration.
     guard=docker.from_env(timeout=5)
@@ -369,5 +418,5 @@ def watchdog():
 if __name__=='__main__':
     import threading
     threading.Thread(target=watchdog,daemon=True).start()
-    threading.Thread(target=memory_sampler,daemon=True).start()
+    threading.Thread(target=system_sampler,daemon=True).start()
     main()

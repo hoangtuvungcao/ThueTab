@@ -1206,3 +1206,23 @@ form > .row:last-child { justify-content: flex-end; }
 @media (max-width: 640px) { .share-qr { flex-direction: column; text-align: center; } }
 
 .dl-how { display: block; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* ---------- admin: live system view ---------- */
+.sys-title { font-size: var(--fs-lg); margin: var(--s-lg) 0 var(--s-sm); display: flex; align-items: baseline; gap: var(--s-xs); flex-wrap: wrap; }
+.sys-title small { font-size: var(--fs-sm); font-weight: 400; }
+.sys { display: flex; flex-direction: column; gap: var(--s-md); margin-bottom: var(--s-lg); }
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--s-md); }
+.sys-worker .card-head h2 { font-size: var(--fs-md); }
+.sys-meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--s-md); }
+.sys-meter { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sys-meter-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-sm); font-size: var(--fs-sm); }
+.sys-meter-head span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
+.sys-meter .meter { margin: 0; }
+.sys-meter small { overflow-wrap: anywhere; }
+.sys-facts { display: flex; flex-wrap: wrap; gap: var(--s-sm) var(--s-lg); margin-top: var(--s-md); font-size: var(--fs-sm); color: var(--muted); }
+.sys-facts span { display: inline-flex; align-items: center; gap: 6px; }
+.sys-facts b { color: var(--ink); }
+.sys-tabs { margin-top: var(--s-md); table-layout: fixed; }
+.sys-tabs td.ellipsis { max-width: 0; }
+.sys-tabs th:nth-child(2), .sys-tabs th:nth-child(3) { width: 90px; }
+.pager { display: flex; align-items: center; justify-content: center; gap: var(--s-sm); flex-wrap: wrap; padding: var(--s-sm) 0; }

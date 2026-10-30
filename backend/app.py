@@ -955,6 +955,28 @@ def sepay_loop(stop):
     while not stop.wait(30):
         try: poll_sepay()
         except Exception as e: print('SePay poll failed:',type(e).__name__,flush=True)
+SYSTEM={}  # worker id -> latest system figures from its heartbeat (memory only: refreshed every few seconds)
+_rate={'at':time.monotonic(),'out':0,'in':0,'out_bps':0,'in_bps':0}
+@app.get('/api/admin/system')
+def admin_system(u=Depends(admin)):
+    """Live system view: each server's CPU/RAM/disk/network and tabs, viewers and stream bandwidth."""
+    t=time.monotonic();dt=t-_rate['at']
+    if dt>=1:
+        _rate.update(out_bps=int((hub.bytes_out-_rate['out'])/dt),in_bps=int((hub.bytes_in-_rate['in'])/dt),out=hub.bytes_out,**{'in':hub.bytes_in},at=t)
+    with Session() as s:
+        names={x.id:x.name for x in s.scalars(select(Tab).where(Tab.status=='running'))}
+        workers=[]
+        for w in s.scalars(select(Worker)):
+            sysd=SYSTEM.get(w.id,{})
+            tabs=[{**x,'name':names.get(x.get('tab_id',''),'')} for x in sysd.get('tabs',[])]
+            workers.append({'id':w.id,'online':w.last_seen>now()-20,'last_seen':w.last_seen,'capacity':w.capacity,
+                            'running':s.scalar(select(func.count()).select_from(Tab).where(Tab.worker_id==w.id,Tab.status=='running')) or 0,
+                            'system':{k:v for k,v in sysd.items() if k!='tabs'},'tabs':sorted(tabs,key=lambda x:-x.get('cpu',0))})
+        return {'workers':workers,'live':{**hub.live(),'out_bps':_rate['out_bps'],'in_bps':_rate['in_bps']},
+                'tabs':{'running':s.scalar(select(func.count()).select_from(Tab).where(Tab.status=='running')) or 0,
+                        'total':s.scalar(select(func.count()).select_from(Tab)) or 0},
+                'time':now()}
+
 @app.get('/api/admin/overview')
 def admin_overview(u=Depends(admin)):
     with Session() as s:
@@ -1304,6 +1326,7 @@ def auto_renew(s,t):
 class Report(BaseModel):
     id: str = Field(max_length=40)
     memory_mb: int = Field(ge=0)
+    system: dict = Field(default_factory=dict)  # host CPU/RAM/disk/network + per-tab figures (admin view)
     statuses: dict[str,str] = Field(default_factory=dict,max_length=100)
 @app.post('/api/internal/heartbeat',dependencies=[Depends(worker_auth)])
 def heartbeat(b:Report):
@@ -1311,6 +1334,7 @@ def heartbeat(b:Report):
         w=lock(s,Worker,b.id)
         if not w: raise HTTPException(403,'Worker not provisioned')
         w.last_seen=now();w.memory_mb=b.memory_mb
+        if b.system and len(json.dumps(b.system))<=50000: SYSTEM[b.id]=b.system
         all_tabs=s.scalars(select(Tab).where(Tab.worker_id==b.id)).all()
         for t in all_tabs: auto_renew(s,t)
         commands=[]

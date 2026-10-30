@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Empty } from './ui.jsx';
 
 /**
  * columns: [{ key, label, render(row), sort(row) → comparable, className, hideMobile }]
  * Sortable headers, optional row selection and row click. On phones each row becomes a card
- * (labels come from data-label), so nothing scrolls sideways.
+ * (labels come from data-label), so nothing scrolls sideways. Long lists are split into pages of `pageSize`.
  */
-export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClick, selectable, selected = [], onSelect, empty = 'Không có dữ liệu phù hợp', initialSort }) {
+export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClick, selectable, selected = [], onSelect, empty = 'Không có dữ liệu phù hợp', initialSort, pageSize = 20 }) {
   const [sort, setSort] = useState(initialSort || null); // { key, dir: 1 | -1 }
+  const [page, setPage] = useState(0);
   const sorted = useMemo(() => {
     if (!sort) return rows;
     const col = columns.find(c => c.key === sort.key);
@@ -18,6 +19,11 @@ export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClic
       return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
     });
   }, [rows, sort, columns]);
+  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // A new search/filter or sort shrinks the list: never stay on a page past the end.
+  useEffect(() => { if (page > pages - 1) setPage(pages - 1); }, [pages]);
+  useEffect(() => { setPage(0); }, [sort]);
+  const shown = sorted.slice(page * pageSize, page * pageSize + pageSize);
   const allOn = selectable && rows.length > 0 && rows.every(r => selected.includes(rowKey(r)));
   const toggle = id => onSelect(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   const head = c => {
@@ -41,7 +47,7 @@ export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClic
           </tr>
         </thead>
         <tbody>
-          {sorted.map(r => {
+          {shown.map(r => {
             const id = rowKey(r);
             return (
               <tr key={id} className={(onRowClick ? 'clickable' : '') + (selected.includes(id) ? ' selected' : '')}
@@ -55,6 +61,19 @@ export default function DataTable({ columns, rows, rowKey = r => r.id, onRowClic
           })}
         </tbody>
       </table>
+      <Pager page={page} pages={pages} total={sorted.length} onChange={setPage} />
     </div>
+  );
+}
+
+/** "‹ Trước · Trang 2/5 · 87 dòng · Sau ›" — hidden when everything fits on one page. */
+export function Pager({ page, pages, total, onChange, unit = 'dòng' }) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="pager" aria-label="Phân trang">
+      <button type="button" className="btn btn-sm btn-ghost" disabled={page === 0} onClick={() => onChange(page - 1)}><ChevronLeft size={16} aria-hidden /> Trước</button>
+      <span className="muted num">Trang {page + 1}/{pages} · {total} {unit}</span>
+      <button type="button" className="btn btn-sm btn-ghost" disabled={page >= pages - 1} onClick={() => onChange(page + 1)}>Sau <ChevronRight size={16} aria-hidden /></button>
+    </nav>
   );
 }

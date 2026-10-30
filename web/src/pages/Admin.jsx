@@ -11,6 +11,7 @@ import AdminUser from './AdminUser.jsx';
 import { CouponsSection, SupportInbox, BroadcastSection, GrowthSection, MaintenanceSection, useGrowthKpis } from './AdminGrowth.jsx';
 
 const AdminContent = lazy(() => import('./AdminContent.jsx'));
+const SystemPanel = lazy(() => import('./AdminSystem.jsx'));
 
 const SECTIONS = [
   ['overview', 'Tổng quan', BarChart3], ['users', 'Người dùng', Users], ['tabs', 'Tab', LayoutGrid], ['jars', 'File JAR', FileCode],
@@ -38,6 +39,8 @@ function Dashboard({ admin, kpis }) {
         <Stat icon={MessageCircle} label="Yêu cầu hỗ trợ mở" value={kpis.tickets ?? '—'} tone={kpis.tickets ? 'warn' : undefined} />
         <Stat icon={TicketPercent} label="Mã khuyến mãi đang chạy" value={kpis.coupons ?? '—'} />
       </div>
+      <h2 className="sys-title">Hệ thống <small className="muted">· cập nhật mỗi 5 giây</small></h2>
+      <Suspense fallback={<Skeleton variant="rows" count={3} />}><SystemPanel /></Suspense>
       <Card title="Hoạt động" actions={<Segmented label="Khoảng thời gian" value={days} onChange={setDays} options={[[7, '7 ngày'], [30, '30 ngày'], [90, '90 ngày']]} />}>
         {!stats ? <Skeleton variant="rows" count={2} /> : (
           <div className="charts">

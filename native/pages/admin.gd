@@ -18,6 +18,12 @@ func needs() -> Array:
 
 var _extra: Dictionary = {}  # per-section data loaded on demand: support / coupons / growth
 var _ticket_filter: String = "open"
+const PER_PAGE := 20
+var _pages: Dictionary = {}  # list key -> current page (kept while switching sections)
+var _sys_data: Dictionary = {}
+var _sys_box: VBoxContainer  # "Hệ thống" block of the overview (refreshed every 5 s while shown)
+var _sys_timer: Timer
+var _sys_loading: bool = false
 
 
 func build() -> void:
@@ -86,14 +92,29 @@ func _overview() -> void:
 	_body.add_child(grid)
 	UI.stat(grid, "Doanh thu (đã nạp)", UI.money(st.get("total_revenue", 0)))
 	UI.stat(grid, "Tổng số dư người dùng", UI.money(st.get("total_users_balance", 0)))
-	UI.stat(grid, "Người dùng", str(st.get("users", 0)))
+	UI.stat(grid, "Người dùng", str(int(st.get("users", 0))))
 	UI.stat(grid, "Tab đang chạy", "%d / %d" % [int(st.get("active_tabs", 0)), int(st.get("total_tabs", 0))])
-	UI.stat(grid, "JAR chờ duyệt", str(st.get("pending_jars", 0)))
+	UI.stat(grid, "JAR chờ duyệt", str(int(st.get("pending_jars", 0))))
 	var online := 0
 	for w in app.admin.get("workers", []):
 		if w.get("online", false):
 			online += 1
 	UI.stat(grid, "Worker trực tuyến", "%d / %d" % [online, app.admin.get("workers", []).size()])
+
+	var shead := UI.hbox(_body, T.space("sm"))
+	UI.label(shead, "Hệ thống", "SubheadingLabel").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var hint := UI.label(shead, "· cập nhật mỗi 5 giây", "DimLabel")
+	hint.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_sys_box = UI.vbox(_body, T.space("md"))
+	UI.label(_sys_box, "Đang tải số liệu…", "MutedLabel")
+	if _sys_timer == null:
+		_sys_timer = Timer.new()
+		_sys_timer.wait_time = 5.0
+		_sys_timer.timeout.connect(_load_system)
+		add_child(_sys_timer)
+	_sys_timer.start()
+	_load_system()
 
 	var whead := UI.hbox(_body, T.space("sm"))
 	UI.label(whead, "Máy chủ (worker)", "SubheadingLabel")
@@ -132,6 +153,146 @@ func _overview() -> void:
 				await app.act("/admin/workers/" + wid, Api.DELETE, null, "Đã xóa worker."), true), "GhostButton")
 
 
+# ---------- live system view (CPU / RAM / disk / network per server, viewers, stream bandwidth) ----------
+
+func _load_system() -> void:
+	if section != "overview" or not is_instance_valid(_sys_box) or _sys_loading or not is_visible_in_tree():
+		if section != "overview" and _sys_timer:
+			_sys_timer.stop()
+		return
+	_sys_loading = true
+	var r: Dictionary = await app.api.request("/admin/system")
+	_sys_loading = false
+	if not is_instance_valid(_sys_box):
+		return
+	if not r.ok:
+		UI.clear(_sys_box)
+		UI.label(_sys_box, "Không tải được số liệu hệ thống: " + str(r.error), "MutedLabel")
+		return
+	_sys_data = r.data
+	_render_system(r.data)
+
+
+static func _size_mb(v: Variant) -> String:
+	var x := float(v)
+	return ("%.1f GB" % (x / 1024.0)).replace(".", ",") if x >= 1024.0 else "%d MB" % int(x)
+
+
+static func _rate(bps: Variant) -> String:
+	var x := maxf(float(bps), 0.0)
+	if x >= 1048576.0:
+		return ("%.1f MB/s" % (x / 1048576.0)).replace(".", ",")
+	return "%d KB/s" % int(round(x / 1024.0)) if x >= 1024.0 else "%d B/s" % int(x)
+
+
+static func _uptime(s: int) -> String:
+	if s <= 0:
+		return "—"
+	var d := s / 86400
+	var h := (s % 86400) / 3600
+	return "%d ngày %d giờ" % [d, h] if d > 0 else "%d giờ %d phút" % [h, (s % 3600) / 60]
+
+
+## Bar + caption; green under 70 %, amber under 90 %, red above (same as the web).
+func _meter(parent: Node, title: String, pct: int, detail: String) -> void:
+	var v := UI.vbox(parent, 4)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.custom_minimum_size.x = 170
+	var head := UI.hbox(v, T.space("sm"))
+	UI.label(head, title, "MutedLabel", false).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UI.label(head, "%d%%" % pct, "StrongLabel", false)
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	bar.max_value = 100
+	bar.value = clampi(pct, 0, 100)
+	bar.custom_minimum_size.y = 8
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = T.color("surface_2")
+	bg.set_corner_radius_all(4)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = T.color("danger") if pct >= 90 else (T.color("warn") if pct >= 70 else T.color("accent"))
+	fill.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fill)
+	v.add_child(bar)
+	UI.label(v, detail, "DimLabel")
+
+
+func _render_system(d: Dictionary) -> void:
+	UI.clear(_sys_box)
+	var live: Dictionary = d.get("live", {})
+	var tabs: Dictionary = d.get("tabs", {})
+	var grid := GridContainer.new()
+	grid.columns = 2 if app.compact else 4
+	grid.add_theme_constant_override("h_separation", T.space("md"))
+	grid.add_theme_constant_override("v_separation", T.space("md"))
+	_sys_box.add_child(grid)
+	UI.stat(grid, "Tab đang chạy", "%d / %d" % [int(tabs.get("running", 0)), int(tabs.get("total", 0))])
+	UI.stat(grid, "Đang xem trực tiếp", str(int(live.get("viewers", 0))), "%d tab · %d xem bằng video" % [int(live.get("tabs_watched", 0)), int(live.get("video_viewers", 0))])
+	UI.stat(grid, "Băng thông luồng hình", _rate(live.get("out_bps", 0)), "Gửi tới người xem")
+	UI.stat(grid, "Luồng từ máy chủ game", str(int(live.get("streams_in", 0))), "%s · %d ô xem trước" % [_rate(live.get("in_bps", 0)), int(live.get("thumbs", 0))])
+	for w in d.get("workers", []):
+		var s: Dictionary = w.get("system", {})
+		var c := UI.card(_sys_box, "Card", T.space("sm"))
+		var top := UI.hbox(c, T.space("md"))
+		UI.label(top, str(w.id), "StrongLabel", false).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UI.badge(top, "Trực tuyến" if w.get("online", false) else "Mất kết nối", T.color("success") if w.get("online", false) else T.color("danger"))
+		if not s.has("cores"):
+			UI.label(c, "Chưa có số liệu — máy chủ cần chạy worker bản mới.", "MutedLabel")
+			continue
+		var meters := UI.flow(c, T.space("md"))
+		var load: Array = s.get("load", [])
+		_meter(meters, "CPU · %d nhân" % int(s.cores), int(round(float(s.get("cpu", 0)))), "Tải " + " / ".join(load.map(func(x: Variant) -> String: return "%.2f" % float(x))))
+		var mt := float(s.get("mem_total_mb", 0))
+		_meter(meters, "RAM", int(round(float(s.get("mem_used_mb", 0)) * 100.0 / maxf(mt, 1.0))), "%s / %s" % [_size_mb(s.get("mem_used_mb", 0)), _size_mb(mt)])
+		var disk: Variant = s.get("disk")
+		if disk is Dictionary:
+			var dt := float(disk.total_mb)
+			_meter(meters, "Ổ đĩa (dữ liệu)", int(round(float(disk.used_mb) * 100.0 / maxf(dt, 1.0))), "%s / %s · còn %s" % [_size_mb(disk.used_mb), _size_mb(dt), _size_mb(dt - float(disk.used_mb))])
+		var facts := UI.flow(c, T.space("lg"))
+		UI.label(facts, "↑ Tải lên %s" % _rate(s.get("net_tx_bps", 0)), "BodyMutedLabel", false)
+		UI.label(facts, "↓ Tải xuống %s" % _rate(s.get("net_rx_bps", 0)), "BodyMutedLabel", false)
+		UI.label(facts, "Tab %d / %d" % [int(w.get("running", 0)), int(w.get("capacity", 0))], "BodyMutedLabel", false)
+		UI.label(facts, "Hoạt động " + _uptime(int(s.get("uptime", 0))), "BodyMutedLabel", false)
+		var wtabs: Array = w.get("tabs", [])
+		for t in _page_of("sys:" + str(w.id), wtabs, 10):
+			var row := UI.hbox(c, T.space("md"))
+			var nm := str(t.get("name", "")) if str(t.get("name", "")) != "" else str(t.get("tab_id", "")).left(8)
+			UI.label_clip(row, nm).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			UI.label(row, "CPU %s%%" % str(t.get("cpu", 0)), "MonoLabel", false)
+			UI.label(row, _size_mb(t.get("mem_mb", 0)), "MonoLabel", false)
+		_pager(c, "sys:" + str(w.id), wtabs.size(), 10, func() -> void: _render_system(_sys_data))
+
+
+# ---------- pagination ----------
+
+## The slice of `items` on the current page of list `key`.
+func _page_of(key: String, items: Array, per: int = PER_PAGE) -> Array:
+	var pages := maxi(1, ceili(items.size() / float(per)))
+	var p := clampi(int(_pages.get(key, 0)), 0, pages - 1)
+	_pages[key] = p
+	return items.slice(p * per, (p + 1) * per)
+
+
+## "‹ Trước · Trang 2/5 · 87 mục · Sau ›" under a list; hidden when it fits on one page.
+func _pager(parent: Node, key: String, total: int, per: int = PER_PAGE, redraw: Callable = Callable()) -> void:
+	var pages := ceili(total / float(per))
+	if pages <= 1:
+		return
+	var p := int(_pages.get(key, 0))
+	var go := func(to: int) -> void:
+		_pages[key] = to
+		if redraw.is_valid():
+			redraw.call()
+		else:
+			render()
+	var row := UI.hbox(parent, T.space("sm"))
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	UI.button(row, "‹ Trước", go.bind(p - 1), "GhostButton").disabled = p == 0
+	UI.label(row, "Trang %d/%d · %d mục" % [p + 1, pages, total], "MutedLabel", false).size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	UI.button(row, "Sau ›", go.bind(p + 1), "GhostButton").disabled = p >= pages - 1
+
+
 func _jars() -> void:
 	var jars: Array = app.admin.get("jars", []).duplicate()
 	jars.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -143,7 +304,7 @@ func _jars() -> void:
 		return
 	if bool(app.config.get("jar_auto_approve", true)):
 		UI.label(_body, "File tải lên được tự động duyệt. Bạn vẫn có thể từ chối file xấu — tab đang dùng file đó sẽ bị dừng.", "MutedLabel")
-	for j in jars:
+	for j in _page_of("jars", jars):
 		var c := UI.card(_body, "Card", T.space("sm"))
 		var top := UI.hbox(c, T.space("md"))
 		var info := UI.vbox(top, 2)
@@ -163,6 +324,7 @@ func _jars() -> void:
 		UI.button(row, "Xóa file", func() -> void:
 			app.confirm("Xóa file JAR", "Xóa \"%s\"? Tab đang dùng file này chuyển về \"Chưa chọn game\"." % str(j.filename), "Xóa", func() -> void:
 				await app.act("/admin/jars/" + jid, Api.DELETE, null, "Đã xóa file JAR."), true), "GhostButton")
+	_pager(_body, "jars", jars.size())
 
 
 func _orders() -> void:
@@ -171,7 +333,10 @@ func _orders() -> void:
 		UI.empty_state(_body, "Chưa có đơn nạp", "Chưa có người dùng nào tạo đơn nạp tiền.")
 		return
 	UI.label(_body, "\"Xác nhận tay\" dùng khi khách chuyển khoản sai nội dung: nhập mã giao dịch ngân hàng để cộng tiền.", "MutedLabel")
+	var all_orders := orders
+	orders = _page_of("orders", all_orders)
 	var c := UI.card(_body, "Card", T.space("sm"))
+	_pager(_body, "orders", all_orders.size())
 	for i in orders.size():
 		var o: Dictionary = orders[i]
 		if i > 0:
@@ -244,8 +409,10 @@ func _extend_tab(t: Dictionary) -> void:
 
 
 func _users() -> void:
-	var users: Array = app.admin.get("users", [])
+	var all_users: Array = app.admin.get("users", [])
+	var users := _page_of("users", all_users)
 	var c := UI.card(_body, "Card", T.space("sm"))
+	_pager(_body, "users", all_users.size())
 	for i in users.size():
 		var u: Dictionary = users[i]
 		if i > 0:
@@ -287,7 +454,10 @@ func _tabs() -> void:
 	if tabs.is_empty():
 		UI.empty_state(_body, "Chưa có tab nào", "Hệ thống chưa có tab.")
 		return
+	var all_tabs := tabs
+	tabs = _page_of("tabs", all_tabs)
 	var c := UI.card(_body, "Card", T.space("sm"))
+	_pager(_body, "tabs", all_tabs.size())
 	for i in tabs.size():
 		var t: Dictionary = tabs[i]
 		if i > 0:
@@ -313,9 +483,11 @@ func _audit() -> void:
 	if rows.is_empty():
 		UI.label(_body, "Chưa có hoạt động.", "MutedLabel")
 		return
+	var page := _page_of("audit", rows)
 	var c := UI.card(_body, "Card", T.space("xs"))
-	for i in mini(rows.size(), 100):
-		var a: Dictionary = rows[i]
+	_pager(_body, "audit", rows.size())
+	for i in page.size():
+		var a: Dictionary = page[i]
 		var row := UI.hbox(c, T.space("md"))
 		var when := UI.label(row, UI.datetime(a.get("created")), "MonoLabel", false)
 		when.custom_minimum_size.x = 140
