@@ -10,11 +10,12 @@ config_version=5
 
 [application]
 
-run/low_processor_mode=true
-
 config/name="ThuêTab"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.0235, 0.0353, 0.0706, 1)
 run/main_scene="res://native/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+run/low_processor_mode=true
 config/icon="res://icon.svg"
 
 [autoload]
@@ -42,5 +43,6 @@ enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+environment/defaults/default_clear_color=Color(0.0235, 0.0353, 0.0706, 1)
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
