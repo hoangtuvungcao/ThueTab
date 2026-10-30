@@ -398,6 +398,7 @@ func _layout_body() -> void:
 	_texture.stretch_mode = TextureRect.STRETCH_SCALE if _stretch() else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_texture.texture = prev_tex
 	_texture.mouse_filter = Control.MOUSE_FILTER_STOP
+	_texture.add_to_group("no_drag_scroll")  # swipes here go to the game, not the page
 	_texture.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_texture.gui_input.connect(_on_screen_input)
 	_stack.add_child(_texture)
@@ -480,6 +481,7 @@ func _layout_body() -> void:
 		panel.custom_minimum_size.x = 300 if not app.compact else 260
 		panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_keypad_card = keys
+	panel.add_to_group("no_drag_scroll")  # sliding between keys must not scroll the page
 	var title_row := UI.hbox(keys, T.space("sm"))
 	UI.label(title_row, "Bàn phím Nokia", "SubheadingLabel")
 	var help := UI.button(title_row, "?", Callable(), "GhostButton")
@@ -749,6 +751,7 @@ func _build_gamepad() -> void:
 	_pad_root = Control.new()
 	_pad_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pad_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_pad_root.add_to_group("no_drag_scroll")
 	app.page_overlay.add_child(_pad_root)
 	var bg := ColorRect.new()
 	bg.color = Color.BLACK

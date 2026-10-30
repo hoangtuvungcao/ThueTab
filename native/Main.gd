@@ -126,6 +126,7 @@ func _ready() -> void:
 	api = Api.new()
 	api.name = "Api"
 	add_child(api)
+	add_child(preload("res://native/drag_scroll.gd").new())
 	api.unauthorized.connect(_on_unauthorized)
 	api.connectivity.connect(_on_connectivity)
 	_load_settings()

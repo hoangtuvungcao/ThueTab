@@ -28,6 +28,7 @@ var items: Array = []
 var anchor: Control
 var _panel: PanelContainer
 var _rows: Array = []
+var _box: ScrollContainer  # scrolls when the menu is taller than the screen (phone in landscape)
 
 
 static func icon_for(text: String) -> String:
@@ -91,9 +92,14 @@ func _ready() -> void:
 		sb.content_margin_bottom = 12 + float(get_tree().current_scene.get("_insets").size.y)
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
+	_box = ScrollContainer.new()
+	_box.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_box.scroll_deadzone = 12
+	_panel.add_child(_box)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 2)
-	_panel.add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_box.add_child(col)
 	if sheet:
 		var hc := CenterContainer.new()
 		hc.custom_minimum_size.y = 12
@@ -201,6 +207,11 @@ func _row(col: VBoxContainer, it: Array, row_h: float) -> void:
 
 
 func _place(sheet: bool) -> void:
+	# Content height, capped to the screen: the rest scrolls.
+	var content := (_box.get_child(0) as Control).get_combined_minimum_size()
+	var chrome := _panel.get_theme_stylebox("panel").get_minimum_size()
+	var room := size.y - chrome.y - (8.0 if sheet else 16.0)
+	_box.custom_minimum_size = Vector2(content.x + (12.0 if content.y > room else 0.0), minf(content.y, room))
 	_panel.reset_size()
 	var ps := _panel.get_combined_minimum_size()
 	if sheet:
