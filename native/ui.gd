@@ -326,8 +326,14 @@ static func empty_state(parent: Node, title: String, body: String, action_text: 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", T.space("md"))
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.custom_minimum_size = Vector2(minf(T.compf("empty_state.max_width", 360), 360), 0)
 	center.add_child(col)
+	# At most 360 wide, but never wider than the card: a fixed 360 overflowed phone screens and pushed the whole
+	# page to the right. The width follows the card (the centre's own minimum stays at or below it, so no loop).
+	var max_w := minf(T.compf("empty_state.max_width", 360), 360)
+	center.resized.connect(func() -> void:
+		var want := minf(max_w, center.size.x)
+		if absf(col.custom_minimum_size.x - want) >= 1.0:
+			col.custom_minimum_size.x = want)
 	var pad := Control.new()
 	pad.custom_minimum_size.y = T.space("lg")
 	col.add_child(pad)
