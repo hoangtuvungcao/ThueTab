@@ -111,6 +111,7 @@ var _modal_width: float = 560.0
 var _sheet_offset: float = 0.0  # slide-in offset for bottom sheets (animated, applied by _layout_modal)
 var _kb_h: float = 0.0  # on-screen keyboard height in UI units: dialogs sit above it ("Gõ chữ vào game")
 var _kb_top := false  # typing in a dialog, keyboard height unknown by any means: dialog goes to the top
+var _pan: float = 0.0  # screen slid up so a focused page field stays above the keyboard
 var _ime_view: Variant = null  # Android decor view, read for the keyboard (IME) inset; false = not available
 var _pop_layer: Control  # notifications popover (desktop)
 var _bell: Button
@@ -945,9 +946,9 @@ func _apply_safe_area() -> void:
 	_insets = Rect2(safe.position.x / k, safe.position.y / k, maxf(0.0, win.x - safe.end.x) / k, maxf(0.0, win.y - safe.end.y) / k)
 	for layer in [_shell, _login_layer]:
 		layer.offset_left = _insets.position.x
-		layer.offset_top = _insets.position.y
+		layer.offset_top = _insets.position.y - _pan
 		layer.offset_right = -_insets.size.x
-		layer.offset_bottom = -_insets.size.y
+		layer.offset_bottom = -_insets.size.y - _pan
 
 
 const BOTTOM_MAX := 5  # phone bottom bar: first 4 items + "Thêm" when there are more
@@ -1333,14 +1334,24 @@ func _watch_keyboard() -> void:
 	var win := DisplayServer.window_get_size()
 	var h := px * size.y / float(win.y) if win.y > 0 and px > 0 else 0.0
 	var focus := get_viewport().gui_get_focus_owner()
-	var typing := _overlay != null and _overlay.visible and (focus is LineEdit or focus is TextEdit) and _modal_panel.is_ancestor_of(focus)
-	var top := typing and not known
-	if absf(h - _kb_h) < 1.0 and top == _kb_top:
-		return
-	_kb_h = h
-	_kb_top = top
-	if _overlay and _overlay.visible:
-		_layout_modal()
+	var field := focus is LineEdit or focus is TextEdit
+	var in_modal := field and _overlay != null and _overlay.visible and _modal_panel.is_ancestor_of(focus)
+	var top := in_modal and not known
+	if absf(h - _kb_h) >= 1.0 or top != _kb_top:
+		_kb_h = h
+		_kb_top = top
+		if _overlay and _overlay.visible:
+			_layout_modal()
+	# A field on a page (login, account, wallet, game text row, admin…): slide the whole screen up just enough
+	# for the field to sit above the keyboard, and back down once the keyboard is gone.
+	var pan := 0.0
+	if field and not in_modal and _kb_h > 0.0:
+		var r := (focus as Control).get_global_rect()
+		var bottom := r.end.y + _pan  # where the field is with no pan
+		pan = clampf(bottom + 12.0 - (size.y - _kb_h), 0.0, maxf(0.0, r.position.y + _pan - _insets.position.y - 8.0))
+	if absf(pan - _pan) >= 1.0:
+		_pan = pan
+		_apply_safe_area()
 
 
 ## Keyboard height in px from Android's window insets, or -1 when they cannot be read. Godot reports 0 on
