@@ -1012,7 +1012,24 @@ func _more_sheet(rest: Array) -> void:
 		row.offset_left = T.space("md")
 		UI.nav_icon(row, str(item.get("icon", "")), T.color("muted"), 20)
 		UI.label(row, str(item.label), "StrongLabel", false).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Same as the web "Thêm" sheet: the phone header has no room for the theme switch.
+	var dark := T.mode == "dark"
+	var tb := UI.button(body, "", func() -> void:
+		close_modal()
+		toggle_theme(), "NavButton")
+	tb.custom_minimum_size.y = 48
+	var trow := UI.hbox(tb, T.space("md"))
+	trow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	trow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	trow.offset_left = T.space("md")
+	UI.nav_icon(trow, "sun" if dark else "moon", T.color("muted"), 20)
+	UI.label(trow, "Giao diện sáng" if dark else "Giao diện tối", "StrongLabel", false).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UI.button(body, "Đăng xuất", logout, "DangerButton")
+
+
+## Light <-> dark, from what is shown now (a "system" choice becomes an explicit one, like the web toggle).
+func toggle_theme() -> void:
+	set_user_pref("theme", "light" if T.mode == "dark" else "dark")
 
 
 func _render_header() -> void:
@@ -1022,6 +1039,9 @@ func _render_header() -> void:
 	UI.clear(_header_right)
 	if user.is_empty():
 		return
+	if not compact:  # phones: in the "Thêm" sheet
+		var dark := T.mode == "dark"
+		UI.icon_button(_header_right, "sun" if dark else "moon", toggle_theme, "Giao diện sáng" if dark else "Giao diện tối", "md")
 	var bell := UI.icon_button(_header_right, "bell", open_notifications, "Thông báo", "md")
 	_bell = bell
 	var unread := int(notifications.get("unread", 0))

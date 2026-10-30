@@ -44,8 +44,21 @@ func _circle(cx: float, cy: float, r: float) -> void:
 	draw_arc(_p(cx, cy), r * s, 0, TAU, 32, color, _w(), true)
 
 
+func _arc(cx: float, cy: float, r: float, from_deg: float, to_deg: float) -> void:
+	var s := minf(size.x, size.y) / 24.0
+	draw_arc(_p(cx, cy), r * s, deg_to_rad(from_deg), deg_to_rad(to_deg), 24, color, _w(), true)
+
+
 func _draw() -> void:
 	match icon:
+		"sun":
+			_circle(12, 12, 4)
+			for i in 8:
+				var d := Vector2.from_angle(i * TAU / 8.0)
+				_poly([[12 + d.x * 7, 12 + d.y * 7], [12 + d.x * 9.5, 12 + d.y * 9.5]])
+		"moon":  # lucide "moon": outer arc from the top round to the right, inner arc back
+			_arc(12, 12, 9, -90, -360)
+			_arc(16.5, 7.5, 6.36, -135, -315)
 		"layout-grid":
 			_rect(3, 3, 7, 7)
 			_rect(14, 3, 7, 7)
