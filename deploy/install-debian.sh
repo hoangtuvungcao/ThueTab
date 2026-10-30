@@ -203,7 +203,13 @@ if [ -n "$CF_TOKEN" ]; then
     echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" > /etc/apt/sources.list.d/cloudflared.list
     apt-get update -qq && apt-get install -y -qq cloudflared >/dev/null
   fi
-  cloudflared service install "$CF_TOKEN" >/dev/null 2>&1 || systemctl restart cloudflared
+  # HTTP/2 over TCP 443: many home/ISP networks drop the UDP that QUIC (the default) needs, and cloudflared
+  # then keeps retrying QUIC ("failed to dial to edge with quic: timeout") instead of connecting.
+  mkdir -p /etc/systemd/system/cloudflared.service.d
+  printf '[Service]\nEnvironment=TUNNEL_TRANSPORT_PROTOCOL=http2\n' > /etc/systemd/system/cloudflared.service.d/http2.conf
+  systemctl daemon-reload
+  cloudflared service install "$CF_TOKEN" >/dev/null 2>&1 || true
+  systemctl restart cloudflared
 fi
 
 if [ "$WITH_APPS" = 1 ]; then
