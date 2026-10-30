@@ -919,8 +919,6 @@ h1, h2, h3 { padding-top: 0.08em; }
   .table.rt td > * { min-width: 0; }
   .table.rt td.td-check { justify-content: flex-start; }
   .table.rt td.hide-mobile { display: none; }
-  /* a card row has room for a second line: names, emails and file names wrap instead of being cut */
-  .table.rt td .ellipsis { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
   .editor-grid { grid-template-columns: 1fr; }
   .preview-col { position: static; }
   .admin-nav .search { margin-left: 0; flex-basis: 100%; max-width: none; }
@@ -1225,10 +1223,9 @@ form > .row:last-child { justify-content: flex-end; }
 .sys-facts span { display: inline-flex; align-items: center; gap: 6px; }
 .sys-facts b { color: var(--ink); }
 .sys-tabs { margin-top: var(--s-md); table-layout: fixed; }
-.sys-tabs td.ellipsis { max-width: 0; }
+.sys-tabs td.sys-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }  /* one line, "…" when long */
 .sys-tabs th:nth-child(2), .sys-tabs th:nth-child(3) { width: 90px; }
 @media (max-width: 760px) {
-  .sys-tabs td.ellipsis { white-space: normal; overflow-wrap: anywhere; }
   .sys-tabs th:nth-child(2), .sys-tabs th:nth-child(3) { width: 64px; }
 }
 .pager { display: flex; align-items: center; justify-content: center; gap: var(--s-sm); flex-wrap: wrap; padding: var(--s-sm) 0; }

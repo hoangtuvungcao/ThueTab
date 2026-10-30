@@ -65,7 +65,7 @@ function WorkerCard({ w }) {
               <table className="table sys-tabs">
                 <thead><tr><th>Tab</th><th className="right">CPU</th><th className="right">RAM</th></tr></thead>
                 <tbody>{w.tabs.slice(p * TABS_PER_PAGE, (p + 1) * TABS_PER_PAGE).map(t => (
-                  <tr key={t.tab_id}><td className="ellipsis" title={t.name || t.tab_id}>{t.name || <code>{t.tab_id.slice(0, 8)}</code>}</td>
+                  <tr key={t.tab_id}><td className="sys-name" title={t.name || t.tab_id}>{t.name || <code>{t.tab_id.slice(0, 8)}</code>}</td>
                     <td className="right num">{t.cpu}%</td><td className="right num">{mb(t.mem_mb)}</td></tr>
                 ))}</tbody>
               </table>
