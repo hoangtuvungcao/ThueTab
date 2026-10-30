@@ -729,13 +729,12 @@ def test_double_click_rent_and_renew_charge_once():
 
 
 
-def test_same_jar_twice_is_stored_once():
+def test_same_jar_twice_is_a_new_numbered_copy():
     a=client()
     data=make_jar()
-    r1=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup.jar'}).json()
-    r2=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup-again.jar'}).json()
-    assert r1['jar']['id']==r2['jar']['id'] and r2.get('duplicate') is True
-    assert sum(1 for j in a.get('/api/jars').json() if j['id']==r1['jar']['id'])==1
+    r1=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup.jar'}).json()['jar']
+    r2=a.post('/api/jars/upload',content=data,headers={'X-Filename':'dup.jar'}).json()['jar']
+    assert r1['id']!=r2['id'] and (r1['filename'],r2['filename'])==('dup.jar','dup (1).jar')
 
 def test_jar_name_from_android_picker_and_rename():
     c=client()

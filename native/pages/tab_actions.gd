@@ -512,10 +512,7 @@ static func upload(app: Node, path: String) -> Dictionary:
 		return {}
 	var jar: Dictionary = r.data.get("jar", {})
 	var st := str(jar.get("status", "approved"))
-	if r.data.get("duplicate", false):
-		app.toast("File này đã có trong danh sách: %s." % str(jar.get("filename", name)))
-	else:
-		app.toast("Đã tải lên %s (%s)." % [str(jar.get("filename", name)), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
+	app.toast("Đã tải lên %s (%s)." % [str(jar.get("filename", name)), kind_label(str(jar.get("kind", "")))] + ("" if st == "approved" else " Đang chờ duyệt."))
 	var rj: Dictionary = await app.api.request("/jars")
 	if rj.ok:
 		app.jars = rj.data

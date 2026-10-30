@@ -22,9 +22,8 @@ export function useJarUpload(onDone) {
     if (file.size > config.jar_max_mb * 1048576) { toast(`File vượt quá ${config.jar_max_mb} MB.`, 'error'); return null; }
     setBusy(true);
     try {
-      const { jar, duplicate } = await uploadJar(file);
-      if (duplicate) toast(`File này đã có trong danh sách: ${jar.filename}.`, 'info');
-      else toast(jar.status === 'approved' ? `Đã tải lên ${jar.filename}.` : `Đã tải lên ${jar.filename}. Đang chờ quản trị viên duyệt.`, 'success');
+      const { jar } = await uploadJar(file);
+      toast(jar.status === 'approved' ? `Đã tải lên ${jar.filename}.` : `Đã tải lên ${jar.filename}. Đang chờ quản trị viên duyệt.`, 'success');
       await refresh();
       onDone?.(jar);
       return jar;

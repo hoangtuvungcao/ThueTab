@@ -461,9 +461,7 @@ async def upload_jar(req:Request,u=Depends(current)):
     kind, midlet, screen = inspect_jar(content)
     digest = hashlib.sha256(content).hexdigest()
     with Session() as s:
-        # The same file again (double click, re-upload): hand back the copy already stored, no second file.
-        same = s.scalar(select(CustomJar).where(CustomJar.user_id==u.id, CustomJar.sha256==digest, CustomJar.status!='rejected'))
-        if same: return {'ok':True,'jar':jar_dict(same),'duplicate':True}
+        # The same file again is stored again as its own entry ("game (1).jar"): users keep copies on purpose.
         if u.role!='admin' and s.scalar(select(func.count()).select_from(CustomJar).where(CustomJar.user_id==u.id))>=MAX_JARS_PER_USER:
             raise HTTPException(409, f'Bạn đã có {MAX_JARS_PER_USER} file JAR. Hãy xoá bớt file không dùng trước khi tải lên.')
     jar_id = uid()
