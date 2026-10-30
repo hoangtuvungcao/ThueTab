@@ -370,7 +370,7 @@ export default function Viewer({ tab }) {
         </>}
 
         {panel && (
-          <div className="v-panel" onClick={e => e.target === e.currentTarget && setPanel(null)}>
+          <div className={'v-panel' + (panel === 'text' ? ' top' : '')} onClick={e => e.target === e.currentTarget && setPanel(null)}>
             <div className="v-panel-card">
               <div className="row between"><strong>{{ screen: 'Màn hình', text: 'Gõ chữ', more: 'Tuỳ chọn' }[panel]}</strong>
                 <button type="button" className="btn btn-ghost btn-icon" aria-label="Đóng" onClick={() => setPanel(null)}><X size={18} /></button></div>

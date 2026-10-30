@@ -109,6 +109,7 @@ var _sheet_handle: Control
 var _modal_dim: ColorRect
 var _modal_width: float = 560.0
 var _sheet_offset: float = 0.0  # slide-in offset for bottom sheets (animated, applied by _layout_modal)
+var _kb_h: float = 0.0  # on-screen keyboard height in UI units: dialogs sit above it ("Gõ chữ vào game")
 var _pop_layer: Control  # notifications popover (desktop)
 var _bell: Button
 var _retired: Array = []
@@ -757,6 +758,14 @@ func _build_layers() -> void:
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			close_modal())
 	host.add_child(_modal_dim)
+	# Phones: the on-screen keyboard covers the bottom of the window (Godot does not resize for it), so an
+	# open dialog with a text field is moved up above the keyboard while it is shown.
+	if OS.has_feature("mobile"):
+		var kb := Timer.new()
+		kb.wait_time = 0.15
+		kb.autostart = true
+		add_child(kb)
+		kb.timeout.connect(_watch_keyboard)
 	_modal_panel = PanelContainer.new()
 	_modal_panel.theme_type_variation = "Modal"
 	host.add_child(_modal_panel)
@@ -1280,7 +1289,7 @@ func _layout_modal() -> void:
 		if c is Control:
 			(c as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL if (sheet or equal) else Control.SIZE_SHRINK_END
 			(c as Control).size_flags_stretch_ratio = 1.0
-	var max_h := size.y - (_insets.position.y + 24.0 if sheet else 48.0)
+	var max_h := size.y - _kb_h - (_insets.position.y + 24.0 if sheet else 48.0)
 	var head_h := _modal_head.get_combined_minimum_size().y if _modal_head.visible else 0.0
 	var handle_h := _sheet_handle.get_combined_minimum_size().y if sheet else 0.0
 	var foot_h := (_modal_footer.get_combined_minimum_size().y + T.compf("dialog.footer_gap", 12)) if _modal_footer.visible else 0.0
@@ -1293,8 +1302,26 @@ func _layout_modal() -> void:
 	_modal_panel.reset_size()
 	var ph := _modal_panel.get_combined_minimum_size().y
 	_modal_panel.size = Vector2(w, ph)
-	_modal_panel.position = Vector2(0, size.y - ph + _sheet_offset) if sheet else ((size - Vector2(w, ph)) / 2.0).floor()
+	# The keyboard covers the safe-area inset too: a sheet resting on it needs no bottom inset padding.
+	if sheet and _kb_h > 0.0:
+		sb.content_margin_bottom = pad
+		_modal_panel.reset_size()
+		ph = _modal_panel.get_combined_minimum_size().y
+		_modal_panel.size = Vector2(w, ph)
+	var room := size.y - _kb_h  # visible height above the keyboard
+	_modal_panel.position = Vector2(0, room - ph + _sheet_offset) if sheet else Vector2(floorf((size.x - w) / 2.0), floorf(maxf(8.0, (room - ph) / 2.0)))
 	_modal_panel.pivot_offset = _modal_panel.size / 2.0
+
+
+func _watch_keyboard() -> void:
+	var px := DisplayServer.virtual_keyboard_get_height()
+	var win := DisplayServer.window_get_size()
+	var h := px * size.y / float(win.y) if win.y > 0 and px > 0 else 0.0
+	if absf(h - _kb_h) < 1.0:
+		return
+	_kb_h = h
+	if _overlay and _overlay.visible:
+		_layout_modal()
 
 
 ## Confirm (components.confirm): round icon on top, centred title + text, two equal buttons.

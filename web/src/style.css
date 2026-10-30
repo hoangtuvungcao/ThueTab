@@ -401,6 +401,8 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
 .v-foot .segmented { flex: none; }
 .v-overlay { display: none; }
 .v-panel { position: absolute; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; padding: var(--s-md); background: rgb(0 0 0 / 0.45); animation: fade 0.15s ease-out; }
+/* "Gõ chữ" opens the phone keyboard, which covers the bottom of the screen: that panel sits at the top. */
+.v-panel.top { align-items: flex-start; }
 .v-panel-card { width: min(460px, 100%); max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: var(--s-md); padding: var(--s-md) var(--s-lg) var(--s-lg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: 0 16px 40px rgb(0 0 0 / 0.4); animation: sheet-in 0.2s ease-out; }
 .v-pop { display: flex; flex-direction: column; gap: var(--s-md); }
 .viewer[data-keypad=sm] .v-pad .key { height: 36px; }
@@ -752,7 +754,7 @@ legend { padding: 0; margin-bottom: var(--s-sm); }
   .v-chips { bottom: calc(env(safe-area-inset-bottom) + 8px); }
   /* the toolbar owns the top-left corner */
   .v-stage .live-tag { left: auto; right: 8px; }
-  .v-panel { align-items: center; }
+  .v-panel:not(.top) { align-items: center; }
   .toasts { left: calc(env(safe-area-inset-left) + 12px); right: auto; top: 8px; width: min(320px, 38vw); }
 }
 :root[data-motion=reduce] *, :root[data-motion=reduce] *::before, :root[data-motion=reduce] *::after { animation: none !important; transition: none !important; }
