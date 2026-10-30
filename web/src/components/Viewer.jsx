@@ -6,7 +6,7 @@ import { useApp } from '../store.js';
 import { Button, StateBadge, KindBadge, Segmented, Switch, Menu, useToast } from './ui.jsx';
 import { ScreenPicker, changeScreen, rotatedScreen, orientationOf, screenDims } from './ScreenPicker.jsx';
 import { useMedia } from '../hooks.js';
-import { DPad, NumPad, useKeyboard } from './Keypad.jsx';
+import { DPad, Key, NumPad, useKeyboard } from './Keypad.jsx';
 import { usePollingFrame, useTabStream, toFramePoint } from './frameSource.js';
 
 const ASCII = /^[\x20-\x7E]{1,64}$/;
@@ -231,13 +231,10 @@ export default function Viewer({ tab }) {
     a.download = `thuetab-${tab.name.replace(/\s+/g, '_')}-${Date.now()}.png`;
     a.click();
   };
-  const Soft = ({ k, children, className = '' }) => {
-    const [down, setDown] = useState(false);
-    return (
-      <button type="button" className={'softkey' + (down ? ' pressed' : '') + ' ' + className} disabled={!live} aria-label={k === 'F1' ? 'Phím mềm trái (F1)' : 'Phím mềm phải (F2)'}
-        onClick={() => { setDown(true); setTimeout(() => setDown(false), 160); send(k); }}>{children}</button>
-    );
-  };
+  const Soft = ({ k, children, className = '' }) => (
+    <Key k={k} base="softkey" className={className} onKey={send} disabled={!live}
+      label={k === 'F1' ? 'Phím mềm trái (F1)' : 'Phím mềm phải (F2)'}>{children}</Key>
+  );
 
   const fw = info.hasFrame ? info.width : still.w || info.width, fh = info.hasFrame ? info.height : still.h || info.height;
   const [dw, dh] = j2me ? screenDims(screenId) : [640, 480];
@@ -332,7 +329,7 @@ export default function Viewer({ tab }) {
               <Soft k="F1" className="pad-soft">◤</Soft>
               <Soft k="F2" className="pad-soft">◥</Soft>
               <button type="button" className={'key pad-123' + (nums ? ' on' : '')} aria-pressed={nums} onClick={() => setNums(!nums)}>123</button>
-              <button type="button" className="key ok pad-ok" disabled={!live} aria-label="OK (Enter)" onClick={() => send('Return')}>OK</button>
+              <Key k="Return" className="ok pad-ok" label="OK (Enter)" onKey={send} disabled={!live}>OK</Key>
             </div>
             {nums && <NumPad onKey={send} disabled={!live} className="pad-nums" />}
           </div>
