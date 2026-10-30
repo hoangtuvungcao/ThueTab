@@ -342,8 +342,13 @@ func apply_prefs() -> void:
 	_render_sidebar_footer()
 	_render_brand()
 	_restyle_banners()
-	if page_id == "viewer" and only_layout and page:
-		page.on_resize()  # phone ↔ desktop layout switch: keep the live stream connected
+	# The game screen is never torn down for a look change: rebuilding it dropped the stream and released the
+	# orientation lock, and with "auto-rotate" on that switched the tab's screen size, which restarts the game.
+	if page_id == "viewer" and page:
+		if only_layout:
+			page.on_resize()  # phone ↔ desktop layout switch: keep the live stream connected
+		else:
+			page.restyle()  # theme / accent / text size: redraw the controls in the new colours, same stream
 	elif not page_id.is_empty():
 		go(page_id, page_params)
 

@@ -190,6 +190,15 @@ func on_resize() -> void:
 	_fit_screen.call_deferred()
 
 
+## New theme, accent or text size: rebuild the controls around the game in the new colours. The stream
+## (source), orientation lock and fullscreen state are kept, so the game is not touched.
+func restyle() -> void:
+	_layout_body()
+	_render_head()
+	_update_source_state()
+	_fit_screen.call_deferred()
+
+
 func _update_source_state() -> void:
 	var t := tab()
 	var st := UI.display_state(t) if not t.is_empty() else ""
