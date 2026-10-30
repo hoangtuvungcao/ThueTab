@@ -32,13 +32,16 @@ done
 while read -r ID SIZE NAME; do
   [ -n "$ID" ] || continue
   FILE="$DEST/$NAME"
-  if [ -f "$FILE" ] && [ "$(stat -c%s "$FILE")" = "$SIZE" ]; then echo "✓ $NAME (đã có)"; continue; fi
+  # Same size is not enough (a rebuilt APK can match byte for byte in size): the asset id must match too.
+  if [ -f "$FILE" ] && [ "$(stat -c%s "$FILE")" = "$SIZE" ] && [ "$(cat "$DEST/.$NAME.id" 2>/dev/null)" = "$ID" ]; then
+    echo "✓ $NAME (đã có)"; continue; fi
+  rm -f "$FILE.part"  # a .part from an older release must not be resumed
   echo "-> $NAME ($((SIZE / 1048576)) MB)"
   for TRY in $(seq 1 60); do
     curl -4 -fL -C - --retry 3 --speed-limit 1024 --speed-time 30 "${AUTH[@]}" -H "Accept: application/octet-stream" \
       -o "$FILE.part" "https://api.github.com/repos/$REPO/releases/assets/$ID" || true
     GOT=$(stat -c%s "$FILE.part" 2>/dev/null || echo 0)
-    if [ "$GOT" = "$SIZE" ]; then mv "$FILE.part" "$FILE"; echo "✓ $NAME"; break; fi
+    if [ "$GOT" = "$SIZE" ]; then mv "$FILE.part" "$FILE"; echo "$ID" > "$DEST/.$NAME.id"; echo "✓ $NAME"; break; fi
     [ "$GOT" -gt "$SIZE" ] && rm -f "$FILE.part"   # corrupt resume: start over
     echo "   đứt ở $((GOT / 1048576))/$((SIZE / 1048576)) MB — tải tiếp (lần $TRY)"; sleep 3
   done
