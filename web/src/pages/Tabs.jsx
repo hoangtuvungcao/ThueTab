@@ -6,6 +6,7 @@ import { useApp } from '../store.js';
 import { useMedia, useOnScreen } from '../hooks.js';
 import { slotLabel } from '../components/Dialogs.jsx';
 import { groupsOf } from '../components/TabTools.jsx';
+import { Pager } from '../components/DataTable.jsx';
 import { useTabFrame } from '../components/frameSource.js';
 import { Button, Menu, StateBadge, Empty, Skeleton, PageHead, Stat, Segmented, Card, useToast, KindBadge, Alert, Badge, MAINT_HINT } from '../components/ui.jsx';
 
@@ -163,6 +164,8 @@ function TabTable({ rows }) {
 
 const NO_GROUP = '\u0000none';
 
+const PER_PAGE = 24;
+
 export default function Tabs() {
   const { tabs, slots, user, config, open, act, go, prefs, maint } = useApp();
   alertHours = prefs.expiry_alert_hours ?? 24;
@@ -173,6 +176,7 @@ export default function Tabs() {
   const [view, setView] = useState('grid');
   const [selecting, setSelecting] = useState(false);
   const [sel, setSel] = useState([]);
+  const [page, setPage] = useState(0);
   const now = serverNow();
 
   const head = (actions) => (
@@ -193,10 +197,17 @@ export default function Tabs() {
   const minPrice = Math.min(...config.plans.map(p => p.price));
   const toggle = id => setSel(x => (x.includes(id) ? x.filter(y => y !== id) : [...x, id]));
   const stopSelecting = () => { setSelecting(false); setSel([]); };
-  // Group headers only when several groups exist and no single group is filtered.
-  const sections = group === 'all' && groups.length > 0
-    ? [...groups.map(g => [g, shown.filter(r => r.t.group === g)]), ['', shown.filter(r => !r.t.group)]].filter(([, list]) => list.length)
-    : [[null, shown]];
+  // Group headers only when several groups exist and no single group is filtered. Many tabs are split into pages
+  // (PER_PAGE cards, groups kept in order) so the page never builds hundreds of cards and live previews at once.
+  const grouped = group === 'all' && groups.length > 0;
+  const ordered = grouped ? [...groups.flatMap(g => shown.filter(r => r.t.group === g)), ...shown.filter(r => !r.t.group)] : shown;
+  const inSection = g => shown.filter(r => (r.t.group || '') === g);  // whole group, not just this page
+  const pages = Math.max(1, Math.ceil(ordered.length / PER_PAGE));
+  const pg = Math.min(page, pages - 1);
+  const pageRows = ordered.slice(pg * PER_PAGE, (pg + 1) * PER_PAGE);
+  const sections = grouped
+    ? [...groups.map(g => [g, pageRows.filter(r => r.t.group === g)]), ['', pageRows.filter(r => !r.t.group)]].filter(([, list]) => list.length)
+    : [[null, pageRows]];
   const card = ({ t, state }, i) => <TabCard key={t.id} t={t} state={state} index={i} total={shown.length} selecting={selecting} selected={sel.includes(t.id)} onSelect={toggle} />;
 
   return (
@@ -283,19 +294,19 @@ export default function Tabs() {
           {shown.length === 0 ? (
             <Empty icon={Search} title="Không có tab phù hợp" action={<Button onClick={() => { setQ(''); setFilter('all'); setGroup('all'); }}>Xóa bộ lọc</Button>} />
           ) : view === 'list' && !mobile ? (
-            <TabTable rows={shown} />
+            <><TabTable rows={pageRows} /><Pager page={pg} pages={pages} total={ordered.length} onChange={setPage} unit="tab" /></>
           ) : (
             sections.map(([g, list]) => (
               <section key={g ?? 'all'} className="tab-section">
                 {g !== null && (
                   <div className="group-head">
-                    <h2 className="ellipsis" title={g || 'Chưa có nhóm'}>{g || 'Chưa có nhóm'}</h2><span className="dim small num">{list.length} tab</span>
-                    {selecting && <button type="button" className="link small" onClick={() => setSel(x => [...new Set([...x, ...list.map(r => r.t.id)])])}>Chọn cả nhóm</button>}
+                    <h2 className="ellipsis" title={g || 'Chưa có nhóm'}>{g || 'Chưa có nhóm'}</h2><span className="dim small num">{inSection(g).length} tab</span>
+                    {selecting && <button type="button" className="link small" onClick={() => setSel(x => [...new Set([...x, ...inSection(g).map(r => r.t.id)])])}>Chọn cả nhóm</button>}
                   </div>
                 )}
                 <div className="tab-grid">{list.map(card)}</div>
               </section>
-            ))
+            )).concat(<Pager key="pager" page={pg} pages={pages} total={ordered.length} onChange={setPage} unit="tab" />)
           )}
         </>
       )}

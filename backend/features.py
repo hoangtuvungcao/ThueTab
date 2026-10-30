@@ -127,12 +127,13 @@ def my_referral(u=Depends(current)):
     with tx() as s:
         me = lock(s, User, u.id)
         code = ref_code_for(s, me)
-        invited = s.scalars(select(User).where(User.referred_by == u.id)).all()
+        invited = s.scalar(select(func.count()).select_from(User).where(User.referred_by == u.id)) or 0
+        friends = s.scalars(select(User).where(User.referred_by == u.id).order_by(User.created.desc()).limit(50)).all()
         earned = s.scalar(select(func.sum(Ledger.amount)).where(Ledger.user_id == u.id, Ledger.description.like('Thưởng giới thiệu%'))) or 0
         ref = referral()
         return {'code': code, 'path': f'/#/register?ref={code}', 'enabled': ref['enabled'], 'percent': ref['percent'],
-                'max_bonus': ref['max_bonus'], 'invited': len(invited), 'earned': earned,
-                'friends': [{'name': x.name, 'created': x.created} for x in invited[-50:]]}
+                'max_bonus': ref['max_bonus'], 'invited': invited, 'earned': earned,
+                'friends': [{'name': x.name, 'created': x.created} for x in reversed(friends)]}
 
 
 # ---------- coupons ----------
@@ -170,7 +171,7 @@ def coupon_dict(c):
 @router.get('/api/admin/coupons')
 def list_coupons(u=Depends(admin)):
     with Session() as s:
-        return {'coupons': [coupon_dict(c) for c in s.scalars(select(Coupon).order_by(Coupon.created.desc()))],
+        return {'coupons': [coupon_dict(c) for c in s.scalars(select(Coupon).order_by(Coupon.created.desc()).limit(500))],
                 'uses': [{'code': x.code, 'user_id': x.user_id, 'amount': x.amount, 'context': x.context, 'created': x.created}
                          for x in s.scalars(select(CouponUse).order_by(CouponUse.created.desc()).limit(200))]}
 
@@ -218,7 +219,7 @@ def share_dict(x):
 def list_shares(id: str, u=Depends(current)):
     with Session() as s:
         owned(s, id, u)
-        return [share_dict(x) for x in s.scalars(select(Share).where(Share.tab_id == id, Share.expires > now()).order_by(Share.created.desc()))]
+        return [share_dict(x) for x in s.scalars(select(Share).where(Share.tab_id == id, Share.expires > now()).order_by(Share.created.desc()).limit(100))]
 
 @router.post('/api/tabs/{id}/shares', status_code=201)
 def create_share(id: str, b: ShareIn, u=Depends(current)):
@@ -279,8 +280,10 @@ def ticket_dict(s, t, with_messages=False):
     d = {k: getattr(t, k) for k in ('id', 'subject', 'status', 'created', 'updated')}
     d['messages_count'] = s.scalar(select(func.count()).select_from(TicketMessage).where(TicketMessage.ticket_id == t.id)) or 0
     if with_messages:
+        # The newest 200 messages, oldest first (same order as before; same-second messages keep insertion order).
+        skip = max(0, d['messages_count'] - 200)
         d['messages'] = [{'id': m.id, 'staff': bool(m.staff), 'body': m.body, 'created': m.created}
-                         for m in s.scalars(select(TicketMessage).where(TicketMessage.ticket_id == t.id).order_by(TicketMessage.created))]
+                         for m in s.scalars(select(TicketMessage).where(TicketMessage.ticket_id == t.id).order_by(TicketMessage.created).offset(skip).limit(200))]
     return d
 
 @router.get('/api/tickets')
@@ -376,7 +379,7 @@ def broadcast(b: Broadcast, u=Depends(admin)):
 def my_sessions(req: Request, u=Depends(current)):
     mine = hashlib.sha256(session_token(req).encode()).hexdigest()
     with Session() as s:
-        rows = s.scalars(select(AuthSession).where(AuthSession.user_id == u.id, AuthSession.expires > now()).order_by(AuthSession.created.desc()))
+        rows = s.scalars(select(AuthSession).where(AuthSession.user_id == u.id, AuthSession.expires > now()).order_by(AuthSession.created.desc()).limit(50))
         return [{'id': x.hash[:16], 'agent': x.agent, 'created': x.created, 'expires': x.expires, 'current': x.hash == mine} for x in rows]
 
 @router.delete('/api/me/sessions/{sid}')

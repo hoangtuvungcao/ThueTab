@@ -211,6 +211,7 @@ def screen_hint(fields):
     return '240x320'
 def tab_dict(t): return {k:getattr(t,k) for k in TAB_FIELDS}
 def internal_tab(t): return {**tab_dict(t),'worker_id':t.worker_id,'user_id':t.user_id}
+_last_prune=0
 def limit(key, cap, seconds):
     # DB-wide gate; PostgreSQL advisory lock serializes first insertion across processes.
     with tx() as s:
@@ -1416,6 +1417,10 @@ def heartbeat(b:Report):
         s.execute(delete(Command).where(Command.created<now()-10))
         s.execute(delete(AuthSession).where(AuthSession.expires<now()))
         s.execute(delete(Rate).where(Rate.reset<now()-3600))
+        global _last_prune
+        if now()-_last_prune>3600:  # hourly: notifications older than 90 days (the bell only shows the newest 50)
+            _last_prune=now()
+            s.execute(delete(Notification).where(Notification.created<now()-90*86400))
         def runtime(t):
             j=jars.get(t.custom_jar_id)
             return {**internal_tab(t),'kind':j.kind if j else next((g.get('runtime','jar') for g in CATALOG if g['id']==t.game),'jar'),'midlet':j.midlet if j else ''}

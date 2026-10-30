@@ -46,6 +46,8 @@ func _prune() -> Array:
 		if alive.is_empty():
 			_rects.erase(id)
 			_textures.erase(id)  # card left the page: free its texture
+			if not _busy.get(id, false):
+				_busy.erase(id)
 		else:
 			_rects[id] = alive
 			ids.append(id)

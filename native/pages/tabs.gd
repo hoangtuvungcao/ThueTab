@@ -3,6 +3,7 @@ extends "res://native/pages/page.gd"
 ## a single primary button per card ("Chơi" / "Chọn game" / "Gia hạn") and an overflow menu.
 
 const Actions := preload("res://native/pages/tab_actions.gd")
+const PER_TAB_PAGE := 24
 const FILTERS := ["all", "running", "queued", "idle", "stopping", "stopped", "expired", "error"]
 
 var filter: String = "all"
@@ -46,7 +47,7 @@ func on_data() -> void:
 		_chrome_sig = chrome
 		_render_chrome()
 	var shown := _shown()
-	var layout := JSON.stringify([shown.map(func(t: Dictionary) -> Array: return [str(t.id), str(t.get("group", ""))]), columns_for(300.0), app.tabs.is_empty(), filter, group_filter])
+	var layout := JSON.stringify([shown.map(func(t: Dictionary) -> Array: return [str(t.id), str(t.get("group", ""))]), columns_for(300.0), app.tabs.is_empty(), filter, group_filter, _pages.get("tabs", 0)])
 	if layout != _layout_sig:
 		_layout_sig = layout
 		_render_list(shown)
@@ -206,21 +207,33 @@ func _render_list(shown: Array) -> void:
 			filter = "all"
 			on_data())
 		return
-	# Group headers when tabs are grouped and no single group is filtered.
-	var sections: Array = []
-	if group_filter.is_empty() and not Actions.groups(app).is_empty():
+	# Group headers when tabs are grouped and no single group is filtered. Many tabs are split into pages of
+	# PER_TAB_PAGE cards (groups kept in order), so the page never builds hundreds of cards and previews at once.
+	var grouped := group_filter.is_empty() and not Actions.groups(app).is_empty()
+	var in_group := func(g: String) -> Array:
+		return shown.filter(func(t: Dictionary) -> bool: return str(t.get("group", "")) == g)
+	var ordered: Array = []
+	if grouped:
 		for g in Actions.groups(app) + [""]:
-			var part := shown.filter(func(t: Dictionary) -> bool: return str(t.get("group", "")) == g)
+			ordered.append_array(in_group.call(g))
+	else:
+		ordered = shown
+	var page_tabs := _page_of("tabs", ordered, PER_TAB_PAGE)
+	var sections: Array = []
+	if grouped:
+		for g in Actions.groups(app) + [""]:
+			var part := page_tabs.filter(func(t: Dictionary) -> bool: return str(t.get("group", "")) == g)
 			if not part.is_empty():
 				sections.append([g, part])
 	else:
-		sections.append([null, shown])
+		sections.append([null, page_tabs])
 	for sec in sections:
 		if sec[0] != null:
 			var h := UI.hbox(_list, T.space("sm"))
 			UI.label(h, sec[0] if str(sec[0]) != "" else "Chưa nhóm", "SubheadingLabel", false)
-			UI.badge(h, str(sec[1].size()), T.color("dim"))
+			UI.badge(h, str(in_group.call(sec[0]).size()), T.color("dim"))
 		_render_grid(sec[1])
+	_pager(_list, "tabs", ordered.size(), PER_TAB_PAGE, on_data)
 
 
 func _render_grid(shown: Array) -> void:
