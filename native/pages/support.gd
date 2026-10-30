@@ -165,14 +165,14 @@ func _render_thread() -> void:
 	for m in t.get("messages", []):
 		_bubble(msgs, m)
 
+	# A closed ticket still takes messages (customer or staff, same as the web): sending one reopens it.
 	if closed:
-		UI.label(_thread, "Yêu cầu đã đóng. Tạo yêu cầu mới nếu bạn cần thêm hỗ trợ.", "MutedLabel")
-		return
+		UI.label(_thread, "Yêu cầu đã đóng. Gửi tin nhắn mới để mở lại.", "MutedLabel")
 	var reply := UI.card(_thread, "Card", T.space("sm"))
 	var text := TextEdit.new()
 	text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	text.custom_minimum_size.y = 84
-	text.placeholder_text = "Nhập trả lời…"
+	text.placeholder_text = "Trả lời người dùng…" if params.get("admin", false) else "Nhập tin nhắn…"
 	text.add_theme_font_override("font", preload("res://native/theme.gd").font_regular)
 	reply.add_child(text)
 	var row := UI.hbox(reply, T.space("sm"))

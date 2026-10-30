@@ -754,3 +754,11 @@ def test_same_jar_name_gets_number():
     assert (a['filename'], b['filename']) == ('game.jar', 'game (1).jar')
     assert c.patch('/api/jars/'+a['id'], json={'filename': 'GAME (1).jar'}).json()['jar']['filename'] == 'GAME (1) (1).jar'
     assert c.patch('/api/jars/'+a['id'], json={'filename': 'game.jar'}).json()['jar']['filename'] == 'game.jar'
+
+def test_closed_ticket_reopens_on_reply_from_either_side():
+    c=client(); ad=client('admin@test.vn')
+    t=c.post('/api/tickets',json={'subject':'Lỗi tab','body':'Không lên hình'}).json()
+    assert c.post(f"/api/tickets/{t['id']}/close").json()['status']=='closed'
+    assert ad.post(f"/api/tickets/{t['id']}/messages",json={'body':'Bạn thử lại nhé'}).json()['status']=='answered'
+    assert c.post(f"/api/tickets/{t['id']}/close").json()['status']=='closed'
+    assert c.post(f"/api/tickets/{t['id']}/messages",json={'body':'Vẫn lỗi'}).json()['status']=='open'
