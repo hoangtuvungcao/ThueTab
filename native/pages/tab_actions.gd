@@ -104,7 +104,7 @@ static func schedule_dialog(app: Node, tab: Dictionary) -> void:
 	UI.button(foot, "Lưu", func() -> void: send.call(input.text.strip_edges()), "PrimaryButton")
 
 
-## "Chia sẻ": view-only or control links with an expiry (web link <api origin>/#/s/TOKEN).
+## "Chia sẻ": view-only or control links with an expiry (web link <web origin>/#/s/TOKEN).
 static func share_dialog(app: Node, tab: Dictionary) -> void:
 	var body: VBoxContainer = app.open_modal("Chia sẻ: %s" % str(tab.get("name", "")), 560)
 	UI.label(body, "Người nhận mở liên kết trên trình duyệt, không cần đăng nhập. Thu hồi bất cứ lúc nào.", "BodyMutedLabel")
@@ -120,7 +120,7 @@ static func share_dialog(app: Node, tab: Dictionary) -> void:
 	var label := UI.field(form, "Ghi chú (không bắt buộc)", "Ví dụ: Gửi bạn A")
 	label.max_length = 40
 	var list := UI.vbox(body, T.space("sm"))
-	var origin: String = str(app.api.endpoint)
+	var origin: String = app.web_url()
 	var render := func(items: Array) -> void:
 		UI.clear(list)
 		UI.label(list, "Liên kết đang hoạt động (%d/10)" % items.size(), "StrongLabel")

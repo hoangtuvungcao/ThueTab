@@ -191,6 +191,12 @@ func _boot() -> void:
 # ---------------- settings ----------------
 
 ## API base URL: bundled res://native/client.json, overridable only by the `--api=URL` user arg (QA).
+## Public web address for links people open in a browser (share, referral). The API host has no web pages.
+func web_url() -> String:
+	var w := str(config.get("web_url", "")).strip_edges().trim_suffix("/")
+	return w if w.begins_with("http") else str(api.endpoint)
+
+
 func _load_endpoint() -> String:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--api="):

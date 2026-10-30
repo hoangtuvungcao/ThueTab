@@ -328,6 +328,8 @@ def health():
 @app.get('/api/config')
 def config():
     return {
+        # Public web address (Cloudflare Pages): share and referral links for the native app point here, never at the API.
+        'web_url': ORIGINS[0],
         'plans': plans(),
         'games': [{'id':g['id'],'name':g['name'],'kind':g['kind'],'description':g['description'],'enabled':True,'icon':g.get('icon','custom')} for g in CATALOG if g['enabled']],
         'payment_ready': live_payment(),
@@ -1390,3 +1392,15 @@ if DIST.exists():
             if target.is_relative_to(DIST.resolve()) and target.is_file() and not target.name.endswith('.import'):
                 return FileResponse(target)
         return FileResponse(DIST / 'index.html')
+else:
+    # API-only server (web on Cloudflare Pages): links opened on the API host — e.g. share/referral links from
+    # app 1.2.0, https://<api>/#/s/TOKEN — are sent to the web front-end. The #fragment never reaches the
+    # server, so the page forwards it in the browser.
+    REDIRECT_PAGE=('<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>ThuêTab</title>'
+                   '<script>var w=%s;if(w.indexOf(location.origin)!==0)location.replace(w+location.pathname+location.search+location.hash);'
+                   'else document.write("ThuêTab");</script><noscript><a href="%s">ThuêTab</a></noscript>')
+    @app.get('/{full_path:path}',include_in_schema=False)
+    def to_web(full_path: str):
+        if full_path.startswith('api/'): raise HTTPException(404,'Không tìm thấy.')
+        web=ORIGINS[0]
+        return Response(REDIRECT_PAGE%(json.dumps(web),web),media_type='text/html',headers={'Cache-Control':'no-store'})

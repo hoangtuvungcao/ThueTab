@@ -629,3 +629,18 @@ def test_download_archives_matched_by_name(tmp_path, monkeypatch):
         assert dl=={'windows':'ThueTab-Windows.zip','macos':'ThueTab-macOS.zip','linux':'ThueTab-Linux.tar.gz'}
     finally:
         for f in d.glob('*'): f.unlink()
+
+
+def test_config_exposes_web_url_for_app_links():
+    # Share/referral links from the native app must point at the web front-end, not the API host.
+    import backend.app as m
+    assert TestClient(app).get('/api/config').json()['web_url']==m.ORIGINS[0]
+
+
+def test_api_host_forwards_browser_links_to_web():
+    # Without a bundled web build, opening https://<api>/#/s/TOKEN must land on the web front-end.
+    import backend.app as m
+    if m.DIST.exists(): return
+    r=TestClient(app).get('/')
+    assert r.status_code==200 and 'location.replace' in r.text and m.ORIGINS[0] in r.text
+    assert TestClient(app).get('/api/nope').status_code==404

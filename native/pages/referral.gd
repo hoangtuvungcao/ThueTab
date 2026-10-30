@@ -18,7 +18,7 @@ func build() -> void:
 	if not bool(d.get("enabled", true)):
 		UI.empty_state(_box, "Chương trình giới thiệu đang tạm dừng", "Vui lòng quay lại sau.")
 		return
-	var link: String = str(app.api.endpoint) + str(d.get("path", "/#/register?ref=" + str(d.get("code", ""))))
+	var link: String = app.web_url() + str(d.get("path", "/#/register?ref=" + str(d.get("code", ""))))
 
 	var top := GridContainer.new()
 	top.columns = 1 if app.content_width() < 760 else 2
