@@ -784,6 +784,9 @@ async def stream_worker(ws:WebSocket,id:str):
     try:
         while True:
             frame=await ws.receive_bytes()
+            # One publisher per tab: a replaced connection may still deliver a few queued frames before it closes,
+            # and mixing two encoders' frames corrupts the video.
+            if hub.workers.get(id) is not ws: break
             # JPEG frames, or H.264 access units (Annex B, start code first).
             if len(frame)<=400000 and frame[:3] in (b'\xff\xd8\xff',b'\x00\x00\x00',b'\x00\x00\x01'): hub.publish(id,frame)
     except (WebSocketDisconnect,RuntimeError,KeyError): pass

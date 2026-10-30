@@ -159,18 +159,22 @@ class Streamer:
         w,h=map(int,size.split('x'))
         # PID file lets stop() kill ffmpeg: closing the exec stream alone leaves it running. Constant frame rate
         # while someone watches (nobody watching = no capture); -flush_packets 1 sends each frame as soon as it's encoded.
-        grab=('echo $$ > "$0"; exec ffmpeg -loglevel error -fflags nobuffer -f x11grab -draw_mouse 0 -framerate "$1" '
+        # Any encoder left over from an earlier stream of this tab is stopped first: two encoders feeding one tab
+        # double the frame rate and interleave two unrelated videos (smeared, blocky picture).
+        grab=('pkill -x ffmpeg 2>/dev/null; echo $$ > "$0"; exec ffmpeg -loglevel error -fflags nobuffer -f x11grab -draw_mouse 0 -framerate "$1" '
               '-video_size "$2" -i "$3" ')
         if self.codec=='h264':
             # H.264 sends only what changed between frames: ~10x less data than JPEG, so 30/60 fps fits a slow uplink.
             # The minimal FFmpeg has no assembly: its fast RGB->YUV path garbles chroma (green/magenta stripes), so
             # convert with the exact path. Baseline + zerolatency: no B-frames or lookahead (no added delay), decodable by every browser.
             # One keyframe per second lets a viewer that fell behind resynchronise quickly; aud=1 marks frame
-            # boundaries so the stream can be cut into frames below.
+            # boundaries so the stream can be cut into frames below. "superfast" (not ultrafast) keeps motion
+            # search and the deblocking filter: at the same bitrate the picture is far sharper, for a few % CPU
+            # at these small game resolutions.
             kbps=STREAM_KBPS
             return ['sh','-c',grab+'-vf scale=flags=accurate_rnd+full_chroma_int,format=yuv420p '
-                    '-c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline '
-                    '-g "$1" -crf 26 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
+                    '-c:v libx264 -preset superfast -tune zerolatency -profile:v baseline '
+                    '-g "$1" -crf 21 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
                     self.pidfile,str(self.fps),size,origin,str(kbps),str(kbps//2)]
         # JPEG (thumbnails, native app): bigger screens get lighter compression so the tab keeps its frame rate.
         quality='4' if w*h<=240*320 else '7'

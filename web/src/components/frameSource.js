@@ -53,7 +53,8 @@ export function useTabStream(tabId, { fps, enabled, share }) {
     const meter = setInterval(() => {
       const t = performance.now();
       stamps = stamps.filter(x => t - x <= 1000);
-      patch({ fps: stamps.length, ping: lastPing });
+      // A new viewer or an FPS switch gets a short catch-up burst: never report above the chosen rate.
+      patch({ fps: Math.min(stamps.length, fpsRef.current), ping: lastPing });
     }, 500);
 
     const paint = (img, w, h) => {
@@ -103,6 +104,9 @@ export function useTabStream(tabId, { fps, enabled, share }) {
       const h264 = !videoBroken && await videoSupport;
       if (!alive) return;
       closeDecoder();
+      // Never two sockets at once: both would feed the same decoder (double frame count, corrupted picture).
+      const prev = wsRef.current;
+      if (prev) { prev.onclose = null; prev.onmessage = null; prev.close(1000); }
       patch({ phase: hasFrame ? 'reconnecting' : 'connecting' });
       // Share links authenticate with ?share=; signed-in viewers in token mode send ['bearer', token] as subprotocols.
       const ws = new WebSocket(wsUrl(`/tabs/${tabId}/stream?fps=${fpsRef.current}&ack=1${h264 ? '&codec=h264' : ''}${share ? '&share=' + encodeURIComponent(share) : ''}`), share ? undefined : wsProtocols());
