@@ -133,12 +133,47 @@ static func share_dialog(app: Node, tab: Dictionary) -> void:
 			UI.label_clip(top, str(sh.get("label", "")) if str(sh.get("label", "")) != "" else "Liên kết chia sẻ", "StrongLabel")
 			UI.badge(top, "Điều khiển" if sh.get("can_control", false) else "Chỉ xem", T.color("warn") if sh.get("can_control", false) else T.color("info"))
 			UI.label_clip(row, "Hết hạn %s" % UI.datetime(sh.get("expires")), "DimLabel")
-			var acts := UI.hbox(row, T.space("sm"))
-			acts.alignment = BoxContainer.ALIGNMENT_END
+			var acts := UI.flow(row, T.space("sm"))  # wraps on phones (3 buttons)
+			acts.alignment = FlowContainer.ALIGNMENT_END
 			UI.button(acts, "Sao chép liên kết", func() -> void:
 				DisplayServer.clipboard_set(url)
 				app.toast("Đã sao chép liên kết."), "")
 			var tok := str(sh.token)
+			# QR (PNG made by the server, same web link): opens under the link; tap again to hide.
+			UI.button(acts, "Mã QR", func() -> void:
+				if row.has_meta("qr"):
+					var box: Control = row.get_meta("qr")
+					box.visible = not box.visible
+					return
+				var q: Dictionary = await app.api.fetch_bytes("/tabs/%s/shares/%s/qr" % [str(tab.id), tok])
+				if not is_instance_valid(row):
+					return
+				var img := UI.decode_image(q.data) if q.ok else null
+				if img == null:
+					app.toast(str(q.get("error", "")) if str(q.get("error", "")) != "" else "Không tải được mã QR.", true)
+					return
+				var box := UI.vbox(row, T.space("xs"))
+				var center := CenterContainer.new()
+				box.add_child(center)
+				var tex := TextureRect.new()
+				tex.texture = ImageTexture.create_from_image(img)
+				tex.custom_minimum_size = Vector2(220, 220)
+				tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # crisp modules
+				center.add_child(tex)
+				var hint := UI.label(box, "Quét bằng camera điện thoại để mở liên kết.", "DimLabel")
+				hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				if not OS.has_feature("mobile"):
+					var save_row := CenterContainer.new()
+					box.add_child(save_row)
+					UI.button(save_row, "Lưu ảnh QR", func() -> void:
+						var path := OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS).path_join("thuetab-qr-%s.png" % tok.left(8))
+						if img.save_png(path) == OK:
+							app.toast("Đã lưu " + path)
+						else:
+							app.toast("Không lưu được ảnh QR.", true), "GhostButton")
+				row.set_meta("qr", box), "")
 			UI.button(acts, "Thu hồi", func() -> void:
 				var r: Dictionary = await app.api.request("/tabs/%s/shares/%s" % [str(tab.id), tok], Api.DELETE)
 				if r.ok:

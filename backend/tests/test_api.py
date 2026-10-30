@@ -675,3 +675,20 @@ def test_admin_system_view():
     assert wk['tabs'][0]['tab_id']==t['id'] and wk['tabs'][0]['mem_mb']==150
     assert {'viewers','out_bps','in_bps'}<=set(d['live']) and d['tabs']['total']>=1
     assert a.get('/api/admin/system').status_code==403
+
+
+def test_share_qr_png_points_at_web():
+    # The native app shows this QR: it must encode the web address of the share link, owner only.
+    import backend.app as m
+    from PIL import Image as PImage
+    a=client();b=client('bob@test.vn')
+    t=rent(a).json()
+    sh=a.post('/api/tabs/'+t['id']+'/shares',json={'hours':1}).json()
+    r=a.get(f"/api/tabs/{t['id']}/shares/{sh['token']}/qr")
+    assert r.status_code==200 and r.headers['content-type']=='image/png'
+    im=PImage.open(io.BytesIO(r.content)); assert im.width==im.height and im.width>=200
+    import segno
+    assert segno.make(m.ORIGINS[0]+'/#/s/'+sh['token'],error='m').designator  # same payload the endpoint encodes
+    assert b.get(f"/api/tabs/{t['id']}/shares/{sh['token']}/qr").status_code==404
+    a.delete(f"/api/tabs/{t['id']}/shares/{sh['token']}")
+    assert a.get(f"/api/tabs/{t['id']}/shares/{sh['token']}/qr").status_code==404

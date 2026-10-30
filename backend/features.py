@@ -1,12 +1,12 @@
 """Growth & support features: coupons, referrals, tab sharing, tickets, notifications, maintenance,
 device sessions and batch/scheduled tab actions. Imported at the end of app.py (uses its helpers)."""
 import json, re, secrets, time, hashlib
-from fastapi import APIRouter, HTTPException, Depends, Request, Body
+from fastapi import APIRouter, HTTPException, Depends, Request, Body, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update, delete, func
 from .db import *
 from .app import (current, admin, tx, lock, audit, uid, now, owned, tab_dict, setting, plans, public_user,
-                  restart, SCREEN_IDS, session_token)
+                  restart, SCREEN_IDS, session_token, ORIGINS)
 
 router = APIRouter()
 
@@ -237,6 +237,19 @@ def revoke_share(id: str, token: str, u=Depends(current)):
         owned(s, id, u)
         s.execute(delete(Share).where(Share.tab_id == id, Share.token == token)); audit(s, u.id, 'tab.unshare', id)
     return {'ok': True}
+
+@router.get('/api/tabs/{id}/shares/{token}/qr')
+def share_qr(id: str, token: str, u=Depends(current)):
+    """QR code (PNG) of a share link, for the native app (the web draws its own). Always the web address, never
+    the API host; only the tab's owner can get it."""
+    import io, segno
+    with Session() as s:
+        owned(s, id, u)
+        x = s.get(Share, token)
+        if not x or x.tab_id != id or x.expires <= now(): raise HTTPException(404, 'Liên kết đã hết hạn hoặc bị thu hồi.')
+    buf = io.BytesIO()
+    segno.make(ORIGINS[0] + f'/#/s/{token}', error='m').save(buf, kind='png', scale=8, border=4)
+    return Response(buf.getvalue(), media_type='image/png', headers={'Cache-Control': 'private, max-age=300'})
 
 def share_lookup(s, token):
     x = s.get(Share, token)
