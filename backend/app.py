@@ -739,6 +739,8 @@ def viewer_input(m):
     """Validate one input message from a viewer; returns the worker command or None."""
     kind=m.get('type')
     if kind=='key' and m.get('key') in KEYS: return {'key':m['key']}
+    # Held keys (directions, digits): down when the finger lands, repeated while held, up when it lifts.
+    if kind in ('keydown','keyup') and m.get('key') in HOLD_KEYS: return {'key':m['key'],'hold':kind[3:]}
     if kind=='text' and isinstance(m.get('text'),str) and 1<=len(m['text'])<=64 and re.fullmatch(r'[\x20-\x7e]+',m['text']): return {'text':m['text']}
     if kind=='tap':
         try: b=Tap(**{k:m.get(k) for k in ('x','y','x2','y2')})
@@ -814,7 +816,8 @@ async def stream_view(ws:WebSocket,id:str):
             if cmd and not can_control: await ws.send_text(json.dumps({'type':'error','detail':'Liên kết này chỉ cho phép xem.'}));continue
             if not cmd: await ws.send_text(json.dumps({'type':'error','detail':'Thao tác không hợp lệ.'}));continue
             if not await hub.forward(id,cmd):
-                # Stream not up yet: fall back to the heartbeat queue.
+                # Stream not up yet: fall back to the heartbeat queue (a held key becomes one press).
+                if cmd.get('hold')=='up': continue
                 def queue():
                     with tx() as s:
                         t=s.get(Tab,id)
@@ -848,6 +851,7 @@ async def stream_worker(ws:WebSocket,id:str):
 class Key(BaseModel): key:str
 # F1/F2 are the left/right soft keys in MicroEmulator.
 KEYS={'Up','Down','Left','Right','Return','Escape','space','BackSpace','F1','F2','asterisk','numbersign','0','1','2','3','4','5','6','7','8','9'}
+HOLD_KEYS={'Up','Down','Left','Right','0','1','2','3','4','5','6','7','8','9'}
 def queue_input(s,t,key='',text=''):
     if t.expires<=now() or t.desired!='running': raise HTTPException(409,'Tab không hoạt động.')
     s.add(Command(id=uid(),tab_id=t.id,key=key,text=text))

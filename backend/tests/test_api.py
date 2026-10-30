@@ -762,3 +762,10 @@ def test_closed_ticket_reopens_on_reply_from_either_side():
     assert ad.post(f"/api/tickets/{t['id']}/messages",json={'body':'Bạn thử lại nhé'}).json()['status']=='answered'
     assert c.post(f"/api/tickets/{t['id']}/close").json()['status']=='closed'
     assert c.post(f"/api/tickets/{t['id']}/messages",json={'body':'Vẫn lỗi'}).json()['status']=='open'
+
+def test_viewer_hold_keys():
+    from backend.app import viewer_input
+    assert viewer_input({'type':'keydown','key':'Up'})=={'key':'Up','hold':'down'}
+    assert viewer_input({'type':'keyup','key':'7'})=={'key':'7','hold':'up'}
+    assert viewer_input({'type':'keydown','key':'Return'}) is None  # OK/soft keys are taps only
+    assert viewer_input({'type':'key','key':'Return'})=={'key':'Return'}

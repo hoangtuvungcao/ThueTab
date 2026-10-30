@@ -229,6 +229,11 @@ func _send_json(msg: Dictionary) -> bool:
 	return false
 
 
+## Held key over the live socket (keydown / keyup). False when there is no socket: the caller taps instead.
+func send_hold(key: String, down: bool) -> bool:
+	return _send_json({"type": "keydown" if down else "keyup", "key": key})
+
+
 func send_key(key: String) -> Dictionary:
 	if _send_json({"type": "key", "key": key}):
 		return {"ok": true, "error": ""}

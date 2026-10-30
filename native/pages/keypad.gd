@@ -17,6 +17,11 @@ static func code_for_event(event: InputEvent) -> String:
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
 		return ""
+	return code_for_key(k)
+
+
+## Key name for a key event, pressed or released.
+static func code_for_key(k: InputEventKey) -> String:
 	# Shifted digits on US layouts: Shift+8 = *, Shift+3 = #
 	if k.unicode == 42:
 		return "asterisk"
@@ -31,8 +36,15 @@ static func code_for_event(event: InputEvent) -> String:
 	return ""
 
 
-static func _key(parent: Node, text: String, code: String, send: Callable, variant: String = "KeyButton", h: float = 42.0) -> Button:
-	var b := UI.button(parent, text, func() -> void: send.call(code), variant)
+static func _key(parent: Node, text: String, code: String, send: Callable, variant: String = "KeyButton", h: float = 42.0, hold: Callable = Callable()) -> Button:
+	var b: Button
+	if hold.is_valid():
+		# hold(code, button, down): fires the moment the key is touched and again when it is let go.
+		b = UI.button(parent, text, Callable(), variant)
+		b.button_down.connect(func() -> void: hold.call(code, b, true))
+		b.button_up.connect(func() -> void: hold.call(code, b, false))
+	else:
+		b = UI.button(parent, text, func() -> void: send.call(code), variant)
 	b.set_meta("instant", true)
 	b.custom_minimum_size = Vector2(0, UI.target_h(h))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -54,30 +66,30 @@ static func _grid(parent: Node, cols: int) -> GridContainer:
 ## with_soft=false when the caller places the soft keys itself (viewer puts them under the screen).
 ## size_key = user pref keypad_size (sm/md/lg); "" keeps the default for the context (`small`).
 ## Returns every key Button (row by row, 8 rows) so the caller can resize them to fit the window.
-static func build(parent: Node, send: Callable, small: bool = false, with_soft: bool = true, size_key: String = "") -> Array:
+static func build(parent: Node, send: Callable, small: bool = false, with_soft: bool = true, size_key: String = "", hold: Callable = Callable()) -> Array:
 	var h: float = {"sm": 36.0, "md": 42.0, "lg": 54.0}.get(size_key, 36.0 if small else 42.0)
 	var keys: Array = []
 	var soft := _grid(parent, 3)
 	if with_soft:
-		keys.append(_key(soft, "Mềm trái", "F1", send, "", h))
-	keys.append(_key(soft, "Xóa (C)", "BackSpace", send, "", h))
+		keys.append(_key(soft, "Mềm trái", "F1", send, "", h, hold))
+	keys.append(_key(soft, "Xóa (C)", "BackSpace", send, "", h, hold))
 	if not with_soft:
 		soft.columns = 1
 	else:
-		keys.append(_key(soft, "Mềm phải", "F2", send, "", h))
+		keys.append(_key(soft, "Mềm phải", "F2", send, "", h, hold))
 
 	var dpad := _grid(parent, 3)
 	for k in [["Esc", "Escape"], ["▲", "Up"], ["Space", "space"], ["◀", "Left"], ["OK", "Return"], ["▶", "Right"]]:
-		keys.append(_key(dpad, k[0], k[1], send, "PrimaryButton" if k[1] == "Return" else ("" if k[1] in ["Escape", "space"] else "KeyButton"), h))
+		keys.append(_key(dpad, k[0], k[1], send, "PrimaryButton" if k[1] == "Return" else ("" if k[1] in ["Escape", "space"] else "KeyButton"), h, hold))
 	var gap1 := Control.new()
 	dpad.add_child(gap1)
-	keys.append(_key(dpad, "▼", "Down", send, "KeyButton", h))
+	keys.append(_key(dpad, "▼", "Down", send, "KeyButton", h, hold))
 	var gap2 := Control.new()
 	dpad.add_child(gap2)
 
 	var pad := _grid(parent, 3)
 	for k in [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"], ["9", "9"], ["*", "asterisk"], ["0", "0"], ["#", "numbersign"]]:
-		var b := _key(pad, k[0], k[1], send, "KeyButton", h)
+		var b := _key(pad, k[0], k[1], send, "KeyButton", h, hold)
 		keys.append(b)
 		if k[0] == "*":
 			b.add_theme_font_size_override("font_size", T.font_size("xxl"))

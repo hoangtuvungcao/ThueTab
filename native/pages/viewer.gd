@@ -155,6 +155,7 @@ func render() -> void:
 
 
 func _exit_tree() -> void:
+	_release_all()
 	OS.low_processor_usage_mode = _prev_low_processor
 	if OS.has_feature("mobile"):
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR)
@@ -501,7 +502,7 @@ func _layout_body() -> void:
 	var help := UI.button(title_row, "?", Callable(), "GhostButton")
 	help.custom_minimum_size = Vector2(32, 32)
 	help.tooltip_text = "Phím tắt: mũi tên, Enter, F1/F2 (phím mềm), 0–9, * #, Backspace (xóa), Esc\nCtrl+Enter gõ chữ · F11 toàn màn hình · Alt+← quay lại"
-	_key_buttons = Keypad.build(keys, func(code: String) -> void: send(code), false, false, str(app.uprefs().get("keypad_size", "md")))
+	_key_buttons = Keypad.build(keys, func(code: String) -> void: send(code), false, false, str(app.uprefs().get("keypad_size", "md")), _hold)
 
 	_fit_screen.call_deferred()
 
@@ -602,6 +603,59 @@ static func _validate_text(s: String) -> String:
 	return ""
 
 
+## Arrows and digits are held down in the game for as long as the key/button is (keydown, "still held" every
+## HOLD_REFRESH s, keyup): the game keeps moving. Other keys, or no live socket, are single presses.
+const HOLD_KEYS := ["Up", "Down", "Left", "Right", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+const HOLD_REFRESH := 0.4
+var _held: Dictionary = {}  # code -> the Button held (null for a keyboard key)
+var _hold_timer: Timer
+
+
+func _hold(code: String, button: Variant, down: bool) -> void:
+	if not down:
+		if _held.has(code):
+			_held.erase(code)
+			if source:
+				source.send_hold(code, false)
+		return
+	if _held.has(code):
+		return
+	if code in HOLD_KEYS and source and source.send_hold(code, true):
+		app.key_feedback()
+		_held[code] = button
+		if _hold_timer == null:
+			_hold_timer = Timer.new()
+			_hold_timer.wait_time = HOLD_REFRESH
+			_hold_timer.timeout.connect(_refresh_held)
+			add_child(_hold_timer)
+		if _hold_timer.is_stopped():
+			_hold_timer.start()
+	else:
+		send(code)
+
+
+func _refresh_held() -> void:
+	for code in _held.keys():
+		var b: Variant = _held[code]
+		# A button that is no longer pressed (finger slid off, pad rebuilt) lets its key go.
+		if b != null and (not is_instance_valid(b) or not (b as Button).is_pressed()):
+			_hold(code, null, false)
+		elif source:
+			source.send_hold(code, true)
+	if _held.is_empty() and _hold_timer:
+		_hold_timer.stop()
+
+
+func _release_all() -> void:
+	for code in _held.keys():
+		_hold(code, null, false)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_release_all()
+
+
 func send(key: String) -> void:
 	app.key_feedback()
 	var r: Dictionary = await source.send_key(key)
@@ -628,11 +682,15 @@ func on_key(event: InputEvent) -> void:
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit:
 		return
-	var code := Keypad.code_for_event(event)
+	if k == null:
+		return
+	var code := Keypad.code_for_key(k)
 	if code.is_empty():
 		return
 	get_viewport().set_input_as_handled()
-	send(code)
+	if k.echo:
+		return  # held keys repeat on the server
+	_hold(code, null, k.pressed)
 
 
 # ---------- touch / mouse on the game screen ----------
@@ -756,7 +814,8 @@ func _pad_key(parent: Node, text: String, code: String, size: float = 56.0, acce
 	b.add_theme_stylebox_override("hover_pressed", pressed)
 	b.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	b.add_theme_font_size_override("font_size", T.font_size("lg"))
-	b.button_down.connect(func() -> void: send(code))
+	b.button_down.connect(func() -> void: _hold(code, b, true))
+	b.button_up.connect(func() -> void: _hold(code, b, false))
 	parent.add_child(b)
 	return b
 
@@ -1039,7 +1098,6 @@ func _place_pad() -> void:
 
 func _build_portrait_keys() -> void:
 	var keys := UI.vbox(_body, 6)
-	var send_cb := func(code: String) -> void: send(code)
 	var h := 44.0
 	var dpad := GridContainer.new()
 	dpad.columns = 3
@@ -1054,8 +1112,12 @@ func _build_portrait_keys() -> void:
 				_numpad_box.visible = _numpad_forced
 				_fit_screen.call_deferred(), "")
 		else:
-			b = UI.button(dpad, k[0], send_cb.bind(k[1]), "PrimaryButton" if k[1] == "Return" else "KeyButton")
+			b = UI.button(dpad, k[0], Callable(), "PrimaryButton" if k[1] == "Return" else "KeyButton")
 			b.set_meta("instant", true)
+			var code: String = k[1]
+			var kb := b
+			b.button_down.connect(func() -> void: _hold(code, kb, true))
+			b.button_up.connect(func() -> void: _hold(code, kb, false))
 		b.custom_minimum_size = Vector2(0, h)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_numpad_box = GridContainer.new()
@@ -1064,7 +1126,10 @@ func _build_portrait_keys() -> void:
 	_numpad_box.add_theme_constant_override("v_separation", 6)
 	keys.add_child(_numpad_box)
 	for k in [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"], ["9", "9"], ["*", "asterisk"], ["0", "0"], ["#", "numbersign"]]:
-		var b := UI.button(_numpad_box, k[0], send_cb.bind(k[1]), "KeyButton")
+		var b := UI.button(_numpad_box, k[0], Callable(), "KeyButton")
+		var code: String = k[1]
+		b.button_down.connect(func() -> void: _hold(code, b, true))
+		b.button_up.connect(func() -> void: _hold(code, b, false))
 		b.custom_minimum_size = Vector2(0, h)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_numpad_box.visible = true

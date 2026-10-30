@@ -110,6 +110,7 @@ def start(t):
 
 KEYS={'Up','Down','Left','Right','Return','Escape','space','BackSpace','F1','F2','asterisk','numbersign','0','1','2','3','4','5','6','7','8','9'}
 def xdotool_args(t,cmd):
+    if cmd.get('hold') in ('down','up') and cmd.get('key') in KEYS: return ['key'+cmd['hold'],cmd['key']]
     if cmd.get('key') in KEYS: return ['key','--clearmodifiers',cmd['key']]
     if cmd.get('key') in ('@tap','@swipe'):
         pts=[int(v) for v in cmd['text'].split(',')]
@@ -268,26 +269,60 @@ class Streamer:
             api.close()
 
     def inputs(self,ws,container,docker_api,name):
-        try: pipe=InputPipe(docker_api,name)
-        except Exception: pipe=None
+        box=[None]  # the InputPipe, swapped when it breaks
+        try: box[0]=InputPipe(docker_api,name)
+        except Exception: pass
+        lock=threading.Lock()
+        held={}  # key -> [time of the last keydown from a viewer, pressed at, last repeat]
+        def deliver(cmd):
+            with lock:
+                try:
+                    if box[0]: box[0].send(self.t,cmd)
+                    else: send_input(container,self.t,cmd)
+                except Exception:
+                    # Pipe broke (tab restarted): this key goes the slow way, the next ones through a new pipe.
+                    if box[0]: box[0].close()
+                    try: send_input(container,self.t,cmd);box[0]=InputPipe(docker_api,name)
+                    except Exception: box[0]=None
+        done=threading.Event()
+        def repeat_and_release():
+            # Like a real keypad: a held key presses again every HOLD_EVERY s after HOLD_AFTER s (games that move
+            # on each press keep moving; games that read the key state see it down the whole time). The viewer
+            # re-sends keydown every ~0.4 s while the finger stays down; if that stops (connection lost, app
+            # closed) the key is let go here, so a game never keeps walking on its own.
+            while not done.wait(0.05):
+                t=time.monotonic()
+                for k,h in list(held.items()):
+                    if t-h[0]>HOLD_TIMEOUT:
+                        if held.pop(k,None) is not None: deliver({'key':k,'hold':'up'})
+                    elif t-h[1]>=HOLD_AFTER and t-h[2]>=HOLD_EVERY:
+                        h[2]=t
+                        deliver({'key':k,'hold':'down'})
+        threading.Thread(target=repeat_and_release,daemon=True).start()
         try:
             for raw in ws:
                 if isinstance(raw,str):
                     cmd=json.loads(raw)
-                    try:
-                        if pipe: pipe.send(self.t,cmd)
-                        else: send_input(container,self.t,cmd)
-                    except Exception:
-                        # Pipe broke (tab restarted): this key goes the slow way, the next ones through a new pipe.
-                        if pipe: pipe.close()
-                        try: send_input(container,self.t,cmd);pipe=InputPipe(docker_api,name)
-                        except Exception: pipe=None
+                    k,hold=cmd.get('key'),cmd.get('hold')
+                    if hold=='down':
+                        if k in held:
+                            held[k][0]=time.monotonic()  # still held: refresh only, repeats come from the thread
+                            continue
+                        now_=time.monotonic()
+                        held[k]=[now_,now_,now_]
+                    elif hold=='up':
+                        if held.pop(k,None) is None: continue
+                    deliver(cmd)
         except Exception: pass
         finally:
-            if pipe: pipe.close()
+            done.set()
+            for k in list(held): deliver({'key':k,'hold':'up'})
+            if box[0]: box[0].close()
 
 streamers={}
 SETTLE_SECONDS=6
+HOLD_TIMEOUT=1.5  # s without a keydown refresh before a held key is released
+HOLD_AFTER,HOLD_EVERY=0.35,0.1  # held keys repeat like a phone keypad (same timing as the web keypad)
 def sync_streams(watch,desired,video=()):
     codec=lambda id:'h264' if id in video else 'mjpeg'
     for id,s in list(streamers.items()):

@@ -158,7 +158,8 @@ export default function Viewer({ tab }) {
   const feedback = () => { if (prefs.haptics) navigator.vibrate?.(12); if (prefs.sounds) click(); };
   const send = useCallback(key => { feedback(); input.key(key).catch(fail); }, [input, prefs.haptics, prefs.sounds]);
   const touch = useCallback((x, y, x2, y2) => { feedback(); (x2 === undefined ? input.tap(x, y) : input.swipe(x, y, x2, y2)).catch(fail); }, [input, prefs.haptics, prefs.sounds]);
-  useKeyboard(send, live && panel !== 'text');
+  const hold = useCallback((key, down) => { if (down) feedback(); return input.hold(key, down); }, [input, prefs.haptics, prefs.sounds]);
+  useKeyboard(send, live && panel !== 'text', hold);
 
   const chooseFps = v => { setFps(v); if (v !== prefs.default_fps) setPref('default_fps', v); };
 
@@ -333,7 +334,7 @@ export default function Viewer({ tab }) {
           {padMode && <>
           {!padOff && <>
           <div className="v-overlay left">
-            <DPad onKey={send} disabled={!live} className="pad-dpad" />
+            <DPad onKey={send} onHold={hold} disabled={!live} className="pad-dpad" />
           </div>
           <div className="v-overlay right">
             <div className="pad-right">
@@ -342,7 +343,7 @@ export default function Viewer({ tab }) {
               <button type="button" className={'key pad-123' + (nums ? ' on' : '')} aria-pressed={nums} onClick={() => setNums(!nums)}>123</button>
               <Key k="Return" className="ok pad-ok" label="OK (Enter)" onKey={send} disabled={!live}>OK</Key>
             </div>
-            {nums && <NumPad onKey={send} disabled={!live} className="pad-nums" />}
+            {nums && <NumPad onKey={send} onHold={hold} disabled={!live} className="pad-nums" />}
           </div>
           </>}
           <div className="v-overlay top-left">
@@ -365,8 +366,8 @@ export default function Viewer({ tab }) {
         </div>
 
         {!padOff && <div className="v-pad">
-          <DPad onKey={send} disabled={!live} />
-          <NumPad onKey={send} disabled={!live} />
+          <DPad onKey={send} onHold={hold} disabled={!live} />
+          <NumPad onKey={send} onHold={hold} disabled={!live} />
           {wide && <div className="v-side-text">{textPanel}<p className="hint">Bàn phím: mũi tên, Enter, Esc, F1/F2, Backspace, Space, 0–9, * và #.</p></div>}
         </div>}
 

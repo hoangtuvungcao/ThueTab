@@ -204,6 +204,13 @@ export function useTabStream(tabId, { fps, enabled, share }) {
     };
     return {
       key: key => via({ type: 'key', key }, () => rest.key(key)),
+      // Held key over the live socket: true when sent (the caller then sends keyup), false = no socket, tap instead.
+      hold: (key, down) => {
+        const ws = wsRef.current;
+        if (ws?.readyState !== WebSocket.OPEN) return false;
+        ws.send(JSON.stringify({ type: down ? 'keydown' : 'keyup', key }));
+        return true;
+      },
       tap: (x, y) => via({ type: 'tap', x, y }, () => rest.tap(x, y)),
       swipe: (x, y, x2, y2) => via({ type: 'tap', x, y, x2, y2 }, () => rest.swipe(x, y, x2, y2)),
       text: text => via({ type: 'text', text }, () => rest.text(text))
