@@ -145,7 +145,10 @@ class InputPipe:
 
 AUD=b'\x00\x00\x00\x01\x09'  # H.264 access unit delimiter NAL
 THUMBS=set()  # tabs whose thumbnail someone is looking at (from the heartbeat)
-THUMB_EVERY=2.0
+THUMB_FPS=5
+# Thumbnails (tab cards, multi-screen wall) are small tiles: at most 240 px wide, so 5 fps costs ~25–40 KB/s
+# per tile instead of ~200 KB/s at full size. Exact colour conversion (see the H.264 note in Streamer.ffmpeg).
+THUMB_VF='scale=w=min(240\\,iw):h=-2:flags=bilinear+accurate_rnd+full_chroma_int'
 
 class Streamer:
     """Live MJPEG from ffmpeg x11grab inside the tab's container, relayed to the API over a WebSocket.
@@ -178,7 +181,10 @@ class Streamer:
                     '-c:v libx264 -preset superfast -tune zerolatency -profile:v baseline '
                     '-g "$1" -crf 21 -maxrate "$4"k -bufsize "$5"k -x264-params aud=1 -f h264 -flush_packets 1 -',
                     self.pidfile,str(self.fps),size,origin,str(kbps),str(kbps//2)]
-        # JPEG (thumbnails, native app): bigger screens get lighter compression so the tab keeps its frame rate.
+        if self.fps<=THUMB_FPS:
+            # Nobody watches live, only thumbnails: small tiles.
+            return ['sh','-c',grab+'-vf "$4" -f mjpeg -q:v 8 -flush_packets 1 -',self.pidfile,str(self.fps),size,origin,THUMB_VF]
+        # JPEG (native app 1.1, old browsers): bigger screens get lighter compression so the tab keeps its frame rate.
         quality='4' if w*h<=240*320 else '7'
         return ['sh','-c',grab+'-f mjpeg -q:v "$4" -flush_packets 1 -',self.pidfile,str(self.fps),size,origin,quality]
 
@@ -230,18 +236,36 @@ class Streamer:
         docker_api.close()
 
     def thumbs(self,container):
-        """While the live view is video, thumbnails (tab cards, wall) get a JPEG snapshot every 2 s — only when
-        someone is looking at them. The snapshot never enters the video stream."""
+        """While the live view is video, thumbnails (tab cards, wall) get their own small 5 fps JPEG feed, only while
+        someone is looking at them. Those frames go to /internal/frames and never enter the video stream."""
         midp=self.t.get('kind')=='midp'
         size,origin=(screen(self.t),f':99.0+{SCREEN_ORIGIN[0]},{SCREEN_ORIGIN[1]}') if midp else ('640x480',':99.0')
-        while not self.stop.wait(THUMB_EVERY):
-            if self.t['id'] not in THUMBS: continue
-            try:
-                r=container.exec_run(['ffmpeg','-loglevel','error','-f','x11grab','-draw_mouse','0','-video_size',size,'-i',origin,
-                                      '-frames:v','1','-f','mjpeg','-q:v','7','-'],environment={'DISPLAY':':99'},demux=True)
-                jpeg=r.output[0] or b''
-                if jpeg[:3]==b'\xff\xd8\xff': http.put('/api/internal/frames/'+self.t['id'],content=jpeg)
-            except Exception: pass
+        pidfile=f'/tmp/thumb-{os.urandom(4).hex()}.pid'
+        api=docker.from_env(timeout=8)
+        try:
+            while not self.stop.wait(0.5):
+                if self.t['id'] not in THUMBS: continue
+                # Bounded run (timeout): if this thread dies, the encoder still ends by itself.
+                cmd=['sh','-c','echo $$ > "$0"; exec timeout 30 ffmpeg -loglevel error -f x11grab -draw_mouse 0 -framerate "$1" '
+                     '-video_size "$2" -i "$3" -vf "$4" -f mjpeg -q:v 8 -flush_packets 1 -',pidfile,str(THUMB_FPS),size,origin,THUMB_VF]
+                try:
+                    exec_id=api.api.exec_create(container.id,cmd,environment={'DISPLAY':':99'})['Id']
+                    buf=b''
+                    for out,_ in api.api.exec_start(exec_id,stream=True,demux=True):
+                        if self.stop.is_set() or self.t['id'] not in THUMBS: break
+                        if not out: continue
+                        buf+=out
+                        while True:
+                            start=buf.find(b'\xff\xd8')
+                            end=buf.find(b'\xff\xd9',start+2) if start>=0 else -1
+                            if end<0: break
+                            http.put('/api/internal/frames/'+self.t['id'],content=buf[start:end+2]);buf=buf[end+2:]
+                        if len(buf)>2_000_000: buf=b''
+                except Exception: pass
+                try: container.exec_run(['sh','-c','[ -f "$0" ] && kill "$(cat "$0")"; rm -f "$0"',pidfile])
+                except Exception: pass
+        finally:
+            api.close()
 
     def inputs(self,ws,container,docker_api,name):
         try: pipe=InputPipe(docker_api,name)

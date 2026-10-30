@@ -194,6 +194,7 @@ export function usePollingFrame(tabId, intervalSec, delayMs = 0, enabled = true)
     let alive = true, timer, url = '';
     const ctrl = new AbortController();
     const poll = async () => {
+      const started = performance.now();
       if (!document.hidden) {
         try {
           const blob = await fetchFrame(tabId, ctrl.signal);
@@ -209,7 +210,8 @@ export function usePollingFrame(tabId, intervalSec, delayMs = 0, enabled = true)
           setFrame(f => ({ ...f, fresh: false, err: e.message }));
         }
       }
-      if (alive) timer = setTimeout(poll, intervalSec * 1000);
+      // Paced from the start of the request, so the network round trip doesn't lower the rate (5 fps wall tiles).
+      if (alive) timer = setTimeout(poll, Math.max(0, intervalSec * 1000 - (performance.now() - started)));
     };
     timer = setTimeout(poll, delayMs);
     return () => { alive = false; ctrl.abort(); clearTimeout(timer); if (url) URL.revokeObjectURL(url); };

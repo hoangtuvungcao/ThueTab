@@ -5,7 +5,7 @@ State lives in this process, so the API must run as a single uvicorn process (th
 import asyncio, json, time
 
 FPS_CHOICES = (30, 60)
-THUMB_FPS = 2          # thumbnails (tab cards, wall) stream at a trickle while someone looks at them
+THUMB_FPS = 5          # thumbnails (tab cards, multi-screen wall): small tiles at 5 fps while someone looks at them
 THUMB_WINDOW = 20      # seconds a /frame request keeps the thumbnail stream alive
 LOG_WINDOW = 60        # seconds a /logs request keeps log uploads going
 MAX_VIEWERS_PER_TAB = 4

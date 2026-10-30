@@ -55,7 +55,8 @@ func _prune() -> Array:
 func _tick() -> void:
 	var ids := _prune()
 	var n := maxi(1, ids.size())
-	_timer.wait_time = maxf(0.25, float(T.poll("wall")) / n)
+	# Round-robin over the tiles: each one refreshes every poll_seconds.wall (5 fps), at most 30 requests/s.
+	_timer.wait_time = maxf(1.0 / 30.0, float(T.poll("wall")) / n)
 	if ids.is_empty() or api == null or str(api.token).is_empty():
 		return
 	# Only poll cards that are actually on screen (the server only renders thumbnails while requested).

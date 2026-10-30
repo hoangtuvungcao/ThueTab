@@ -60,7 +60,7 @@ export default function Wall() {
 
   return (
     <>
-      <PageHead title={navLabel('wall')} desc={`Theo dõi mọi tab đang chạy cùng lúc (ảnh làm mới mỗi ${POLL.wall} giây, tối đa một yêu cầu mỗi tab). Bấm vào màn hình để mở xem trực tiếp.`}>
+      <PageHead title={navLabel('wall')} desc={`Theo dõi mọi tab đang chạy cùng lúc (khoảng ${Math.round(1 / POLL.wall)} khung/giây mỗi ô). Bấm vào màn hình để mở xem trực tiếp.`}>
         <Button icon={ArrowLeft} onClick={() => go('tabs')}>Danh sách tab</Button>
       </PageHead>
       {live.length === 0 ? (

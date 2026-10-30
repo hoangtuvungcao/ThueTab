@@ -562,7 +562,7 @@ def test_thumbnails_and_logs_only_on_demand():
     a.get('/api/tabs/'+t['id']+'/frame')
     a.get('/api/tabs/'+t['id']+'/logs')
     hb=_hb()
-    assert hb['watch']=={t['id']:2} and hb['logs']==[t['id']]
+    assert hb['watch']=={t['id']:5} and hb['logs']==[t['id']]
 
 def test_client_ip_behind_proxy():
     from starlette.requests import Request as R
