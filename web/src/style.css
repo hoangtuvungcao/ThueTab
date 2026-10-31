@@ -48,6 +48,8 @@ small { font-size: var(--fs-xs); }
 .dim { color: var(--dim); }
 .accent { color: var(--accent); }
 .danger { color: var(--danger); }
+.warn { color: var(--warn); }
+.nowrap { white-space: nowrap; }
 .small { font-size: var(--fs-sm); }
 .strong { font-weight: 600; }
 .right { text-align: right; }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pause, Play, Repeat, RotateCw, Clock, Terminal, Trash2 } from 'lucide-react';
+import { Pause, Play, Repeat, RotateCw, Clock, Terminal, Trash2, MonitorPlay } from 'lucide-react';
 import { api, money, dateTime, serverNow } from '../api.js';
 import { tabState } from '../tokens.js';
 import { useApp } from '../store.js';
@@ -94,8 +94,9 @@ export function AdminTabMenu({ t, run, ownerJars, onExtend, onDelete }) {
     <Menu label={`Thao tác cho ${t.name}`} items={[
       live ? { label: 'Dừng', icon: Pause, onClick: () => run(() => api('/tabs/' + t.id, 'PATCH', { desired: 'stopped' }), `Đã dừng "${t.name}".`) }
         : t.game && state !== 'expired' && { label: 'Bật', icon: Play, onClick: () => run(() => api('/tabs/' + t.id, 'PATCH', { desired: 'running' }), `Đang bật "${t.name}".`) },
+      { label: 'Xem màn hình', icon: MonitorPlay, disabled: !live, hint: live ? undefined : 'Tab không chạy', onClick: () => open('viewer', { tab: t }) },
       { label: 'Đổi game', icon: Repeat, onClick: () => open('game', { tab: t, ownerJars }) },
-      { label: 'Màn hình', icon: RotateCw, onClick: () => open('screen', { tab: t }) },
+      { label: 'Kích thước màn hình', icon: RotateCw, onClick: () => open('screen', { tab: t }) },
       { label: 'Tặng giờ', icon: Clock, onClick: onExtend },
       { label: 'Xem nhật ký', icon: Terminal, onClick: () => open('logs', { tab: t }) },
       { label: 'Xoá cưỡng chế', icon: Trash2, danger: true, onClick: onDelete }

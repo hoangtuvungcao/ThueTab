@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Check, Copy, Loader2, MoreHorizontal, X, CheckCircle2, AlertTriangle, Info, Gamepad2, Megaphone, Wrench, TicketPercent } from 'lucide-react';
 import { api, money, dateTime } from '../api.js';
 import { JAR_STATUS, stateMeta, COMPONENTS } from '../tokens.js';
@@ -267,35 +268,54 @@ export function Confirm({ title, children, confirmLabel = 'Xác nhận', cancelL
 export function Menu({ items, label = 'Thêm thao tác' }) {
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
+  const [pos, setPos] = useState(null); // fixed position of the list, measured from the button
   const ref = useRef(null);
+  const listRef = useRef(null);  // the list is portaled to <body>: no scrolling table, card or blurred bar can clip it
+  // The list floats above the page (position: fixed), so a scrolling table or a card never cuts it off.
+  // It sits under the button, right-aligned, or above it when there is no room below.
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return; }
+    const list = listRef.current;
+    const b = ref.current.getBoundingClientRect();
+    const w = list.offsetWidth, h = list.offsetHeight;
+    const bottomNav = document.querySelector('.bottom-nav')?.getBoundingClientRect().height || 0;
+    const room = innerHeight - bottomNav - 8;
+    const goUp = b.bottom + 6 + h > room && b.top - 6 - h > 8;
+    const left = Math.max(8, Math.min(b.right - w, innerWidth - w - 8));
+    const top = goUp ? b.top - 6 - h : Math.max(8, Math.min(b.bottom + 6, room - h));
+    setUp(goUp);
+    setPos({ left, top, maxHeight: Math.max(120, room - 8) });
+  }, [open]);
   useEffect(() => {
     if (!open) return;
-    const close = e => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const close = e => { if (!ref.current?.contains(e.target) && !listRef.current?.contains(e.target)) setOpen(false); };
     const esc = e => e.key === 'Escape' && setOpen(false);
+    // A fixed list would drift away from its button: close it when the page or a table scrolls.
+    const scrolled = e => { if (!listRef.current?.contains(e.target)) setOpen(false); };
+    const resized = () => setOpen(false);
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', esc);
-    ref.current.querySelector('[role=menuitem]:not(:disabled)')?.focus();
-    // Open upwards when there is not enough room below (cards near the bottom of the screen).
-    const list = ref.current.querySelector('.menu-list');
-    if (list) {
-      const r = list.getBoundingClientRect();
-      const bottomNav = document.querySelector('.bottom-nav')?.getBoundingClientRect().height || 0;
-      setUp(r.bottom > innerHeight - bottomNav - 8 && r.height < ref.current.getBoundingClientRect().top - 8);
-    }
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+    window.addEventListener('scroll', scrolled, true);
+    window.addEventListener('resize', resized);
+    listRef.current?.querySelector('[role=menuitem]:not(:disabled)')?.focus({ preventScroll: true });
+    return () => {
+      document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc);
+      window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', resized);
+    };
   }, [open]);
   const onKey = e => {
     if (!['ArrowDown', 'ArrowUp'].includes(e.key)) return;
     e.preventDefault();
-    const list = [...ref.current.querySelectorAll('[role=menuitem]:not(:disabled)')];
+    const list = [...(listRef.current?.querySelectorAll('[role=menuitem]:not(:disabled)') || [])];
     const i = list.indexOf(document.activeElement);
     list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus();
   };
   return (
     <div className="menu" ref={ref} onKeyDown={onKey}>
       <Button variant="ghost" icon={MoreHorizontal} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => { setUp(false); setOpen(!open); }} />
-      {open && (
-        <div className={'menu-list' + (up ? ' up' : '')} role="menu">
+      {open && createPortal(
+        <div ref={listRef} className={'menu-list' + (up ? ' up' : '')} role="menu"
+          style={pos ? { position: 'fixed', left: pos.left, top: pos.top, right: 'auto', bottom: 'auto', maxHeight: pos.maxHeight, overflowY: 'auto', zIndex: 70 } : { visibility: 'hidden' }}>
           {items.filter(Boolean).map((it, i, all) => (
             <React.Fragment key={it.label}>
               {it.danger && i > 0 && !all[i - 1].danger && <hr className="menu-sep" aria-hidden />}
@@ -305,7 +325,7 @@ export function Menu({ items, label = 'Thêm thao tác' }) {
               </button>
             </React.Fragment>
           ))}
-        </div>
+        </div>, document.body
       )}
     </div>
   );

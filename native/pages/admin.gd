@@ -17,6 +17,8 @@ func needs() -> Array:
 
 
 var _extra: Dictionary = {}  # per-section data loaded on demand: support / coupons / growth
+var _usage: Dictionary = {}  # tab id -> {cpu, mem_mb}: live load of each running tab (Tab section)
+var _usage_at: int = -100000  # ticks (ms) of the last /admin/system read
 var _ticket_filter: String = "open"
 var _sys_data: Dictionary = {}
 var _sys_box: VBoxContainer  # "Hệ thống" block of the overview (refreshed every 5 s while shown)
@@ -43,7 +45,7 @@ func signature() -> Variant:
 		"jars": sig = a.get("jars")
 		"orders": sig = a.get("orders")
 		"users": sig = a.get("users")
-		"tabs": sig = [a.get("tabs"), int(UI.now() / 60.0)]
+		"tabs": sig = [a.get("tabs"), int(UI.now() / 60.0), _usage, int(Time.get_ticks_msec() / 10000.0)]  # re-render → re-read load every 10 s
 		"audit": sig = a.get("audit")
 		"content": sig = _settings.is_empty()  # forms must not re-render while editing
 		"support", "coupons", "growth": sig = [_extra.has(section), _ticket_filter]  # loaded on demand; forms keep edits
@@ -421,7 +423,24 @@ func _users() -> void:
 		UI.menu_button(row, "⋯", items, "GhostButton").custom_minimum_size.x = UI.target_h(44)
 
 
+## CPU/RAM of each running tab from the servers' heartbeats, read at most every 10 s while the Tab section
+## is open: shows at a glance whether a JAR is loading the server.
+func _load_usage() -> void:
+	_usage_at = Time.get_ticks_msec()
+	var r: Dictionary = await app.api.request("/admin/system")
+	if not r.ok or not is_inside_tree():
+		return
+	var u := {}
+	for w in r.data.get("workers", []):
+		for x in w.get("tabs", []):
+			u[str(x.get("tab_id", ""))] = x
+	_usage = u
+	on_data()
+
+
 func _tabs() -> void:
+	if Time.get_ticks_msec() - _usage_at > 10000:
+		_load_usage()
 	var tabs: Array = app.admin.get("tabs", [])
 	if tabs.is_empty():
 		UI.empty_state(_body, "Chưa có tab nào", "Hệ thống chưa có tab.")
@@ -439,9 +458,18 @@ func _tabs() -> void:
 		info.custom_minimum_size.x = 240
 		UI.label(info, str(t.name), "StrongLabel")
 		UI.label(info, "%s · %s · %s · %s" % [_emails.get(str(t.get("user_id", "")), "?"), str(app.game(str(t.game)).name), str(t.get("worker_id", "")), UI.time_left(t.expires)], "DimLabel")
+		var use: Dictionary = _usage.get(str(t.id), {})
+		if not use.is_empty():
+			# A tab is capped at 0.5 vCPU / 512 MB: near the cap amber, at the cap red.
+			var cpu := float(use.get("cpu", 0))
+			var mem := int(use.get("mem_mb", 0))
+			var heavy := cpu >= 48.0 or mem >= 480
+			var l := UI.label(info, "CPU %s%% · RAM %d MB" % [str(cpu), mem], "MonoLabel", false)
+			if heavy or cpu >= 35.0 or mem >= 380:
+				l.add_theme_color_override("font_color", T.color("danger") if heavy else T.color("warn"))
 		var b := UI.status_badge(row, t)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		UI.button(row, "Màn hình", func() -> void: app.go("viewer", {"id": str(t.id), "tab": t}), "GhostButton")
+		UI.button(row, "Xem màn hình", func() -> void: app.go("viewer", {"id": str(t.id), "tab": t}), "GhostButton")
 		var items: Array = [["Tặng giờ…", func() -> void: _extend_tab(t)]]
 		if not Actions.is_expired(t):
 			items.append(["Dừng" if str(t.desired) == "running" else "Chạy", func() -> void: Actions.toggle(app, t)])

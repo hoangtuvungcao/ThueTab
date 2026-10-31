@@ -103,6 +103,19 @@ function TabsSection({ admin, q, email, run, setForm, setDel }) {
     && (game === 'all' || (game === 'none' ? !t.game : !!t.game)) && (!q || [t.name, t.id, email[t.user_id], jarName[t.custom_jar_id], t.worker_id].some(v => String(v || '').toLowerCase().includes(q))));
   const selTabs = admin.tabs.filter(t => sel.includes(t.id));
   const owners = [...new Set(admin.tabs.map(t => t.user_id))];
+  // Live CPU/RAM of each running tab (from the servers' heartbeats), to spot a JAR that loads the server.
+  const [usage, setUsage] = useState({});
+  useEffect(() => {
+    let on = true;
+    const load = () => api('/admin/system').then(d => {
+      if (on) setUsage(Object.fromEntries(d.workers.flatMap(w => w.tabs).map(x => [x.tab_id, x])));
+    }).catch(() => {});
+    load();
+    const id = setInterval(load, 10000);
+    return () => { on = false; clearInterval(id); };
+  }, []);
+  // A tab is capped at 0.5 vCPU / 512 MB: near the cap it is shown in amber, at the cap in red.
+  const level = (v, warn, bad) => v >= bad ? 'danger' : v >= warn ? 'warn' : '';
   return (
     <>
       <div className="toolbar">
@@ -123,6 +136,12 @@ function TabsSection({ admin, q, email, run, setForm, setDel }) {
           { key: 'name', label: 'Tab', sort: t => t.name, render: t => <div className="min0"><strong className="ellipsis" title={t.name}>{t.name}</strong><small className="muted ellipsis" title={jarName[t.custom_jar_id]}>{t.game ? jarName[t.custom_jar_id] || t.game : 'Chưa chọn game'}</small></div> },
           { key: 'owner', label: 'Chủ', sort: t => email[t.user_id] || '', render: t => <span className="ellipsis" title={email[t.user_id]}>{email[t.user_id] || '—'}</span> },
           { key: 'state', label: 'Trạng thái', sort: t => t._state, render: t => <div className="min0"><StateBadge state={t._state} />{t.error && <small className="danger ellipsis" title={t.error}>{t.error}</small>}</div> },
+          { key: 'usage', label: 'CPU · RAM', sort: t => usage[t.id]?.cpu ?? -1, render: t => {
+            const u = usage[t.id];
+            if (!u) return <span className="dim">—</span>;
+            return <span className="num nowrap" title="Đo trên máy chủ, cập nhật mỗi 10 giây (giới hạn mỗi tab: 0,5 vCPU · 512 MB)">
+              <span className={level(u.cpu, 35, 48)}>{u.cpu}%</span> · <span className={level(u.mem_mb, 380, 480)}>{u.mem_mb} MB</span></span>;
+          } },
           { key: 'screen', label: 'Màn hình', render: t => <span className="num">{(t.screen || '').replace('x', '×')}</span>, hideMobile: true },
           { key: 'worker', label: 'Worker', render: t => <code>{t.worker_id}</code>, hideMobile: true },
           { key: 'expires', label: 'Hết hạn', sort: t => t.expires, render: t => <span className="num" title={dateTime(t.expires)}>{dateTime(t.expires)}</span> },
